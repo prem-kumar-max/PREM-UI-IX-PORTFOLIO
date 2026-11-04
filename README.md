@@ -11,6 +11,8 @@ npm run dev
 
 Open the Vite URL and visit `/admin` to set a browser passcode and manage case studies and site content. Add a case study with a thumbnail, title, description, and Figma prototype iframe or URL. Preview the embed, then save it as a draft or publish it. Published case studies appear on the Work page at `/work/<slug>`; featured published projects also appear on the home page.
 
+Vercel serves this client-side application through the rewrite in `vercel.json`, so routes such as `/admin`, `/about`, and `/work/<slug>` load the React app when opened directly.
+
 Figma embeds are rendered in a sandboxed iframe. Only HTTPS prototype URLs from `embed.figma.com` are accepted; the CMS extracts and stores the iframe `src` rather than rendering pasted HTML. Public case studies and CMS previews include a native browser full-screen viewer with animated open/close, Escape-to-close, and no iframe reload when entering full screen.
 
 ## Storage and privacy
