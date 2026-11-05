@@ -171,6 +171,55 @@ function FloatingTools({ variant }) {
   );
 }
 
+function DesignCanvas() {
+  return (
+    <div className="design-canvas" role="img" aria-label="Illustration of wireframes, interface components, and a user flow">
+      <div className="canvas-window">
+        <div className="canvas-toolbar">
+          <div className="canvas-window-dots"><i /><i /><i /></div>
+          <span>DESIGN CANVAS <span>·</span> 01</span>
+          <span className="canvas-toolbar-mark">100%</span>
+        </div>
+        <div className="canvas-workspace">
+          <div className="canvas-rail" aria-hidden="true"><i /><i /><i /><i /></div>
+          <div className="canvas-artboard">
+            <div className="canvas-artboard-top"><span /><span /></div>
+            <div className="canvas-artboard-title"><i /><i /><i /></div>
+            <div className="canvas-feature-panel">
+              <span className="canvas-feature-image" />
+              <span className="canvas-feature-copy"><i /><i /><i /></span>
+            </div>
+            <div className="canvas-component-row"><i /><i /><i /></div>
+            <div className="canvas-wireframe">
+              <span /><span /><span /><span />
+            </div>
+          </div>
+          <div className="canvas-properties">
+            <span className="canvas-properties-heading" />
+            <span className="canvas-properties-line" />
+            <span className="canvas-properties-line short" />
+            <div className="canvas-color-row"><i /><i /><i /><i /></div>
+            <span className="canvas-properties-heading lower" />
+            <span className="canvas-properties-line" />
+            <span className="canvas-properties-line short" />
+          </div>
+        </div>
+      </div>
+      <div className="canvas-flow-card" aria-hidden="true">
+        <span className="canvas-card-label">USER FLOW</span>
+        <div className="canvas-flow">
+          <i /><b /><i /><b /><i />
+        </div>
+      </div>
+      <div className="canvas-type-card" aria-hidden="true">
+        <span>Aa</span><i /><i />
+      </div>
+      <div className="canvas-cursor" aria-hidden="true"><span>Prem</span></div>
+      <span className="canvas-selection" aria-hidden="true" />
+    </div>
+  );
+}
+
 function ProjectCard({ project, index, onClick, reveal = false }) {
   const metadata = [project.category, project.year].filter(Boolean).join(" · ") || "CASE STUDY";
   const thumbnail = project.thumbnailUrl || project.image;
@@ -307,19 +356,45 @@ function WorkPage({ content, projects, navigate, resumeUrl, resumeFilename }) {
   const published = projects.filter((project) => project.status === "Published");
   const categories = ["All", ...new Set(published.map((project) => project.category).filter(Boolean))];
   const visible = filter === "All" ? published : published.filter((project) => project.category === filter);
+  const years = [...new Set(published.map((project) => project.year).filter(Boolean).map(String))]
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+  const yearRange = years.length > 1 ? `${years[0]} — ${years[years.length - 1]}` : years[0];
   return (
     <>
-      <Header navigate={navigate} active="work" resumeUrl={resumeUrl} resumeFilename={resumeFilename} />
-      <main className="page-main section-shell">
-        <div className="page-kicker"><span>SELECTED WORK</span><span>2024 — 2025</span></div>
-        <div className="page-title-row"><h1 className="page-title">Things made<br /><em>with meaning.</em></h1><p className="page-lede">A collection of digital experiences, ideas and the details that bring them to life.</p></div>
-        <FloatingTools variant="work" />
-        <div className="filter-row" aria-label="Filter projects">
-          {categories.map((category) => <button className={category === filter ? "filter-active" : ""} key={category} onClick={() => setFilter(category)}>{category}</button>)}
-          <span>{visible.length} PROJECT{visible.length === 1 ? "" : "S"}</span>
-        </div>
-        {visible.length ? <div className="project-grid work-grid">{visible.map((project, index) => <ProjectCard key={project.id} project={project} index={index} onClick={() => navigate(`/work/${project.slug}`)} />)}</div> : <p className="empty-note">No published projects in this category yet.</p>}
-      </main>
+      <div className="work-page">
+        <Header navigate={navigate} active="work" resumeUrl={resumeUrl} resumeFilename={resumeFilename} />
+        <main className="page-main section-shell work-page-main">
+          <div className="work-kicker">
+            <span className="eyebrow">SELECTED WORK</span>
+            {yearRange && <span>{yearRange}</span>}
+          </div>
+          <section className="work-intro" aria-labelledby="work-title">
+            <div className="work-intro-art" aria-hidden="true"><span /><span /></div>
+            <h1 className="work-title" id="work-title">Things made<br /><em>with meaning.</em></h1>
+            <p className="work-lede">A collection of digital experiences, ideas and the details that bring them to life.</p>
+          </section>
+          <div className="work-filter-panel">
+            <div className="filter-row work-filters" role="group" aria-label="Filter projects">
+              {categories.map((category) => (
+                <button
+                  type="button"
+                  className={category === filter ? "filter-active" : ""}
+                  aria-pressed={category === filter}
+                  key={category}
+                  onClick={() => setFilter(category)}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="work-results">
+            <span>{filter}</span>
+            <span aria-live="polite">{visible.length} PROJECT{visible.length === 1 ? "" : "S"}</span>
+          </div>
+          {visible.length ? <div className="project-grid work-grid">{visible.map((project, index) => <ProjectCard key={project.id} project={project} index={index} onClick={() => navigate(`/work/${project.slug}`)} />)}</div> : <p className="empty-note">No published projects in this category yet.</p>}
+        </main>
+      </div>
       <Footer content={content} navigate={navigate} />
     </>
   );
@@ -438,46 +513,210 @@ function ProjectPage({ project, projects, content, navigate }) {
 function AboutPage({ content, navigate, resumeUrl }) {
   return (
     <>
-      <Header navigate={navigate} active="about" />
-      <main className="about-page section-shell">
-        <div className="page-kicker"><span>A LITTLE ABOUT ME</span><span>THE PERSON BEHIND THE PIXELS</span></div>
-        <section className="about-hero">
-          <div className="about-hero-copy">
-            <p className="eyebrow">DESIGNER · BUILDER · CURIOUS MIND</p>
-            <h1 className="page-title">Curiosity<br /><em>first.</em></h1>
-            <p className="about-hero-note">Thoughtful digital experiences, shaped by a love for design and technology.</p>
-            <span className="about-location"><span /> Based in {content.location}</span>
-          </div>
-          <figure className="about-portrait">
-            <img src={aboutImage} alt={`${content.name} at a design event`} />
-            <figcaption><span>01 / ABOUT PREM</span><span>DESIGN · TECHNOLOGY · PEOPLE</span></figcaption>
-          </figure>
-        </section>
-        <div className="about-copy-grid"><p className="eyebrow">A NOTE FROM PREM</p><div><p className="about-lede">{content.about}</p><p className="muted-copy">My path through software development has taught me to see how thoughtful interface decisions and the details behind them work together. I'm now bringing that perspective to product design — making digital tools feel more considered, accessible and easy to use.</p><a className="text-link anchor-link" href={resumeUrl || "/Prem-Kumar-Resume.pdf"} target="_blank" rel="noreferrer">View my resume <Arrow diagonal /></a></div></div>
-        <FloatingTools variant="about" />
-        <div className="about-facts">
-          <div><p className="eyebrow">EDUCATION</p><h3>B.Tech, Artificial Intelligence & Data Science</h3><p>Usha Rama College of Engineering and Technology · 2025</p><p>CGPA 7.60 / 10</p></div>
-          <div><p className="eyebrow">EXPERIENCE</p><h3>Java Full Stack Developer Intern</h3><p>Makeskilled · Jul — Oct 2024</p><h3>Android Developer Intern</h3><p>AICTE EduSkills · Jan — Mar 2024</p></div>
-          <div><p className="eyebrow">TOOLS & TECHNOLOGY</p><p className="skill-cloud">React.js · Angular · Flutter · HTML5 · CSS3 · JavaScript · Python · Java · SQL · Spring Boot · Django · Flask · REST APIs · Git · Responsive design</p></div>
-        </div>
-      </main>
+      <div className="about-page-shell">
+        <Header navigate={navigate} active="about" />
+        <main className="about-page section-shell">
+          <div className="page-kicker about-kicker"><span>A LITTLE ABOUT ME</span><span>THE PERSON BEHIND THE PIXELS</span></div>
+          <section className="about-hero" aria-labelledby="about-title">
+            <div className="about-hero-copy" data-reveal>
+              <p className="eyebrow">DESIGNER · BUILDER · CURIOUS MIND</p>
+              <h1 className="page-title" id="about-title">Curiosity<br /><em>first.</em></h1>
+              <p className="about-hero-note">Thoughtful digital experiences, shaped by a love for design and technology.</p>
+              <span className="about-location"><span /> Based in {content.location}</span>
+            </div>
+            <figure className="about-portrait" data-reveal>
+              <img src={aboutImage} alt={`${content.name} at a design event`} />
+              <figcaption><span>01 / ABOUT PREM</span><span>DESIGN · TECHNOLOGY · PEOPLE</span></figcaption>
+            </figure>
+          </section>
+          <section className="about-story" aria-label="A note from Prem">
+            <div className="about-visual" data-reveal><DesignCanvas /></div>
+            <div className="about-copy" data-reveal>
+              <p className="eyebrow">A NOTE FROM PREM</p>
+              <p className="about-lede">{content.about}</p>
+              <p className="muted-copy">My path through software development has taught me to see how thoughtful interface decisions and the details behind them work together. I'm now bringing that perspective to product design — making digital tools feel more considered, accessible and easy to use.</p>
+              <a className="about-resume-link" href={resumeUrl || "/Prem-Kumar-Resume.pdf"} target="_blank" rel="noreferrer">View my resume <Arrow diagonal /></a>
+            </div>
+          </section>
+          <section className="about-tools-section" aria-label="Design tools">
+            <div className="about-tools-heading">
+              <p className="eyebrow">TOOLS OF THE TRADE</p>
+              <span>{content.title}</span>
+            </div>
+            <div className="about-tool-pills">
+              {designTools.map(([name, mark, slug], index) => (
+                <span className={`about-tool-pill about-tool-${slug}`} key={slug} style={{ "--pill-order": index }}>
+                  <span className="about-tool-mark" aria-hidden="true">{mark}</span>{name}
+                </span>
+              ))}
+            </div>
+          </section>
+          <section className="about-facts" aria-label="Education, experience and technologies">
+            <div className="about-fact" data-reveal>
+              <p className="eyebrow"><span>01</span> EDUCATION</p>
+              <h3>B.Tech, Artificial Intelligence & Data Science</h3>
+              <p>Usha Rama College of Engineering and Technology · 2025</p>
+              <p>CGPA 7.60 / 10</p>
+            </div>
+            <div className="about-fact" data-reveal>
+              <p className="eyebrow"><span>02</span> EXPERIENCE</p>
+              <h3>Java Full Stack Developer Intern</h3>
+              <p>Makeskilled · Jul — Oct 2024</p>
+              <h3>Android Developer Intern</h3>
+              <p>AICTE EduSkills · Jan — Mar 2024</p>
+            </div>
+            <div className="about-fact" data-reveal>
+              <p className="eyebrow"><span>03</span> TOOLS & TECHNOLOGY</p>
+              <p className="skill-cloud">React.js · Angular · Flutter · HTML5 · CSS3 · JavaScript · Python · Java · SQL · Spring Boot · Django · Flask · REST APIs · Git · Responsive design</p>
+            </div>
+          </section>
+        </main>
+      </div>
       <Footer content={content} navigate={navigate} />
     </>
   );
 }
 
+function ContactIllustration() {
+  return (
+    <div className="contact-illustration" role="img" aria-label="Glass interface illustration symbolizing a creative conversation">
+      <div className="contact-orbit contact-orbit-one" />
+      <div className="contact-orbit contact-orbit-two" />
+      <span className="contact-orb contact-orb-large" />
+      <span className="contact-orb contact-orb-small" />
+      <div className="contact-chat-card">
+        <span /><span /><span />
+      </div>
+      <div className="contact-profile-card">
+        <span className="contact-profile-avatar"><i /></span>
+        <span className="contact-profile-line" />
+        <span className="contact-profile-line short" />
+        <span className="contact-profile-dot" />
+      </div>
+      <div className="contact-send-card">
+        <span className="contact-send-glow" />
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <path d="M12 47.5 84 15 58.2 85l-11.4-27.4L12 47.5Z" fill="url(#send-gradient)" />
+          <path d="m46.8 57.6 20.5-23.2-15.5 28.1" fill="none" stroke="rgba(255,255,255,.82)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />
+          <defs>
+            <linearGradient id="send-gradient" x1="13" y1="14" x2="84" y2="84" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#BFA3FF" />
+              <stop offset=".58" stopColor="#8655F6" />
+              <stop offset="1" stopColor="#D76ACB" />
+            </linearGradient>
+          </defs>
+        </svg>
+        <span className="contact-send-label">A NOTE, WELL SENT</span>
+      </div>
+      <div className="contact-availability"><span /> AVAILABLE FOR COLLABORATION</div>
+    </div>
+  );
+}
+
 function ContactPage({ content, navigate }) {
+  const [formNotice, setFormNotice] = useState(null);
+  const [draftHref, setDraftHref] = useState("");
+
+  const submitContactForm = (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const name = String(formData.get("name") || "").trim();
+    const email = String(formData.get("email") || "").trim();
+    const subject = String(formData.get("subject") || "").trim();
+    const message = String(formData.get("message") || "").trim();
+    const nameField = form.elements.namedItem("name");
+    const messageField = form.elements.namedItem("message");
+
+    nameField.setCustomValidity(name ? "" : "Please enter your name.");
+    messageField.setCustomValidity(message ? "" : "Please enter a message.");
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      setFormNotice({ type: "error", text: "Please complete the required fields with a valid email address." });
+      setDraftHref("");
+      return;
+    }
+
+    const emailSubject = subject || "Portfolio inquiry";
+    const emailBody = `Name: ${name}\nEmail: ${email}\n\n${message}`;
+    setDraftHref(`mailto:${content.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`);
+    setFormNotice({ type: "draft", text: "Your draft is ready. It will open in your email app; it has not been sent." });
+  };
+
   return (
     <>
-      <Header navigate={navigate} />
-      <main className="contact-page section-shell">
-        <p className="eyebrow">LET’S MAKE SOMETHING GOOD</p>
-        <h1 className="page-title">Have a good<br /><em>one in mind?</em></h1>
-        <p className="contact-intro">I’m always happy to talk about meaningful ideas, thoughtful teams and the little details that make a product feel right.</p>
-        <a className="contact-email" href={`mailto:${content.email}`}>{content.email} <Arrow diagonal /></a>
-        <div className="contact-details"><span>{content.phone}</span><span>{content.location}</span><a href={content.linkedin} target="_blank" rel="noreferrer">LinkedIn <Arrow diagonal /></a><a href={content.github} target="_blank" rel="noreferrer">GitHub <Arrow diagonal /></a><a href={content.behance} target="_blank" rel="noreferrer">Behance <Arrow diagonal /></a></div>
-        <FloatingTools variant="contact" />
-      </main>
+      <div className="contact-page-shell">
+        <Header navigate={navigate} />
+        <main className="contact-page section-shell">
+          <section className="contact-hero" aria-labelledby="contact-title">
+            <div className="contact-hero-copy" data-reveal>
+              <p className="eyebrow">LET’S MAKE SOMETHING GOOD</p>
+              <h1 className="page-title" id="contact-title">Have a good<br /><em>one in mind?</em></h1>
+              <p className="contact-intro">I’m always happy to talk about meaningful ideas, thoughtful teams and the little details that make a product feel right.</p>
+              <a className="contact-email" href={`mailto:${content.email}`}><span className="contact-email-icon" aria-hidden="true">✉</span>{content.email}<Arrow diagonal /></a>
+              <div className="contact-details" aria-label="Contact information">
+                <a href={`tel:${content.phone.replace(/[^\d+]/g, "")}`}>{content.phone}</a>
+                <span>{content.location}</span>
+                <a href={content.linkedin} target="_blank" rel="noreferrer">LinkedIn <Arrow diagonal /></a>
+                <a href={content.github} target="_blank" rel="noreferrer">GitHub <Arrow diagonal /></a>
+                <a href={content.behance} target="_blank" rel="noreferrer">Behance <Arrow diagonal /></a>
+              </div>
+            </div>
+            <div className="contact-hero-art" data-reveal><ContactIllustration /></div>
+          </section>
+
+          <section className="contact-tools" aria-label="Design tools">
+            <div className="contact-tools-heading">
+              <p className="eyebrow">A FEW TOOLS I LIKE</p>
+              <span>{content.title}</span>
+            </div>
+            <div className="contact-tool-pills">
+              {designTools.map(([name, mark, slug]) => (
+                <span className={`contact-tool-pill contact-tool-${slug}`} key={slug}>
+                  <span className="contact-tool-mark" aria-hidden="true">{mark}</span>{name}
+                </span>
+              ))}
+            </div>
+          </section>
+
+          <section className="contact-form-panel" aria-labelledby="contact-form-title">
+            <div className="contact-form-intro">
+              <span className="eyebrow">GET IN TOUCH</span>
+              <h2 id="contact-form-title">Let’s create<br />something great<br /><em>together.</em></h2>
+              <p>Have an idea in mind? Send a note and let’s start a conversation.</p>
+              <span className="contact-form-orbit contact-form-orbit-one" aria-hidden="true" />
+              <span className="contact-form-orbit contact-form-orbit-two" aria-hidden="true" />
+              <span className="contact-form-sphere contact-form-sphere-one" aria-hidden="true" />
+              <span className="contact-form-sphere contact-form-sphere-two" aria-hidden="true" />
+            </div>
+            <form className="contact-form" onSubmit={submitContactForm} noValidate>
+              <div className="contact-form-row">
+                <label htmlFor="contact-name">Your Name <span aria-hidden="true">*</span></label>
+                <input id="contact-name" name="name" type="text" autoComplete="name" placeholder="Your name" required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={() => setFormNotice(null)} />
+                <label htmlFor="contact-email">Your Email <span aria-hidden="true">*</span></label>
+                <input id="contact-email" name="email" type="email" autoComplete="email" placeholder="you@example.com" required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={() => setFormNotice(null)} />
+              </div>
+              <label htmlFor="contact-subject">Subject <span aria-hidden="true">*</span></label>
+              <select id="contact-subject" name="subject" required defaultValue="" onChange={() => setFormNotice(null)}>
+                <option value="" disabled>Select a subject</option>
+                <option value="Project inquiry">Project inquiry</option>
+                <option value="Design collaboration">Design collaboration</option>
+                <option value="Something else">Something else</option>
+              </select>
+              <label htmlFor="contact-message">Your Message <span aria-hidden="true">*</span></label>
+              <textarea id="contact-message" name="message" rows="4" placeholder="Tell me a little about it…" required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={() => setFormNotice(null)} />
+              <button className="contact-submit" type="submit">Send Message <Arrow /></button>
+              <p className="contact-form-footnote">Opens a prefilled draft in your email app. It won’t send until you choose Send.</p>
+              {formNotice && (
+                <div className={`contact-form-notice contact-form-notice-${formNotice.type}`} role={formNotice.type === "error" ? "alert" : "status"} aria-live="polite">
+                  <span>{formNotice.text}</span>
+                  {draftHref && <a href={draftHref}>Open email draft <Arrow diagonal /></a>}
+                </div>
+              )}
+            </form>
+          </section>
+        </main>
+      </div>
       <Footer content={content} navigate={navigate} />
     </>
   );
@@ -1219,6 +1458,40 @@ export default function App() {
     }), { threshold: 0.12, rootMargin: "0px 0px -7% 0px" });
     revealItems.forEach((item) => observer.observe(item));
     return () => { observer.disconnect(); document.documentElement.classList.remove("motion-ready"); };
+  }, [path, publicLoading]);
+  useEffect(() => {
+    const aboutPage = document.querySelector(".about-page");
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!aboutPage || publicLoading || reducedMotion || !("IntersectionObserver" in window)) return undefined;
+    const revealItems = aboutPage.querySelectorAll("[data-reveal]");
+    document.documentElement.classList.add("about-motion-ready");
+    const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add("is-visible");
+      observer.unobserve(entry.target);
+    }), { threshold: 0.12, rootMargin: "0px 0px -7% 0px" });
+    revealItems.forEach((item) => observer.observe(item));
+    return () => {
+      observer.disconnect();
+      document.documentElement.classList.remove("about-motion-ready");
+    };
+  }, [path, publicLoading]);
+  useEffect(() => {
+    const contactPage = document.querySelector(".contact-page");
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!contactPage || publicLoading || reducedMotion || !("IntersectionObserver" in window)) return undefined;
+    const revealItems = contactPage.querySelectorAll("[data-reveal]");
+    document.documentElement.classList.add("contact-motion-ready");
+    const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add("is-visible");
+      observer.unobserve(entry.target);
+    }), { threshold: 0.12, rootMargin: "0px 0px -7% 0px" });
+    revealItems.forEach((item) => observer.observe(item));
+    return () => {
+      observer.disconnect();
+      document.documentElement.classList.remove("contact-motion-ready");
+    };
   }, [path, publicLoading]);
   useEffect(() => {
     const hero = document.querySelector(".home-hero");
