@@ -304,7 +304,7 @@ function HomePage({ content, projects, navigate, resumeUrl, resumeFilename, feat
               <nav className="home-nav" aria-label="Main navigation">
                 <button onClick={() => navigate("/work")}>Work <small>[{featured.length}]</small></button>
                 <button onClick={() => document.getElementById("capabilities")?.scrollIntoView({ behavior: "smooth" })}>Service <small>[4]</small></button>
-                <button onClick={() => navigate("/about")}>About</button>
+                <button onClick={() => navigate("/about")}>About </button>
                 <button onClick={() => navigate("/contact")}>Contact</button>
                 <ResumeLinks resumeUrl={resumeUrl} filename={resumeFilename} className="home-resume-links" />
               </nav>
