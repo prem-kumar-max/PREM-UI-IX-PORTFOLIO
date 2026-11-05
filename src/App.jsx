@@ -56,6 +56,26 @@ function parseAboutExperiences(content) {
   return [];
 }
 
+function getExperienceRecency(experience) {
+  const dates = experience.dates || "";
+  if (/\b(present|current|now)\b/i.test(dates)) return Number.POSITIVE_INFINITY;
+  const years = [...dates.matchAll(/\b(19|20)\d{2}\b/g)].map((match) => Number(match[0]));
+  if (!years.length) return Number.NEGATIVE_INFINITY;
+  const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const months = [...dates.toLowerCase().matchAll(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/g)];
+  const month = months.length ? monthNames.findIndex((name) => months[months.length - 1][0].startsWith(name)) : -1;
+  return years[years.length - 1] * 12 + month;
+}
+
+function sortAboutExperiences(experiences) {
+  return [...experiences].sort((left, right) => {
+    const leftRecency = getExperienceRecency(left);
+    const rightRecency = getExperienceRecency(right);
+    if (leftRecency === rightRecency) return 0;
+    return rightRecency > leftRecency ? 1 : -1;
+  });
+}
+
 function useLocation() {
   const [path, setPath] = useState(window.location.pathname);
   const currentPath = useRef(path);
@@ -585,7 +605,7 @@ function AboutPage({ content, navigate, resumeUrl }) {
             </div>
             <div className="about-fact" data-reveal>
               <p className="eyebrow"><span>02</span> EXPERIENCE</p>
-              {aboutExperiences.map((experience, index) => (
+              {sortAboutExperiences(aboutExperiences).map((experience, index) => (
                 <div className="about-experience-entry" key={`${experience.role || "experience"}-${index}`}>
                   {(experience.role || experience.company) && <h3>{experience.role || experience.company}</h3>}
                   {experience.role && experience.company && <p>{experience.company}{experience.dates ? ` · ${experience.dates}` : ""}</p>}
@@ -1239,6 +1259,14 @@ function AboutContentEditor({ content, onSave, onDirtyChange }) {
   const [notice, setNotice] = useState("");
   const savedContent = useRef(JSON.stringify(content));
   const experiences = parseAboutExperiences(form);
+  const orderedExperiences = experiences
+    .map((experience, index) => ({ experience, index }))
+    .sort((left, right) => {
+      const leftRecency = getExperienceRecency(left.experience);
+      const rightRecency = getExperienceRecency(right.experience);
+      if (leftRecency === rightRecency) return 0;
+      return rightRecency > leftRecency ? 1 : -1;
+    });
   const hasUnsavedChanges = JSON.stringify(form) !== savedContent.current;
 
   useEffect(() => setForm(content), [content]);
@@ -1325,10 +1353,10 @@ function AboutContentEditor({ content, onSave, onDirtyChange }) {
       <section className="editor-card content-form-card">
         <div className="editor-section-head"><span>03</span><div><h2>Experience</h2><p>Add a separate entry for each role. Entries appear in order on your About page.</p></div></div>
         <div className="about-experience-editor-list">
-          {experiences.map((experience, index) => (
+          {orderedExperiences.map(({ experience, index }, displayIndex) => (
             <section className="editor-card about-experience-editor-item" key={`experience-${index}`}>
               <div className="about-experience-editor-heading">
-                <p className="eyebrow">EXPERIENCE {String(index + 1).padStart(2, "0")}</p>
+                <p className="eyebrow">EXPERIENCE {String(displayIndex + 1).padStart(2, "0")}</p>
                 <button type="button" className="edit-link delete-case-study" onClick={() => removeExperience(index)}>Remove</button>
               </div>
               <div className="field-grid">
