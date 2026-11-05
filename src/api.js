@@ -25,6 +25,22 @@ function fromDatabaseSiteContent(content) {
     ...siteContent,
     ...(content && typeof content === "object" && !Array.isArray(content) ? content : {}),
   };
+  if (!content?.aboutExperiences) {
+    merged.aboutExperiences = JSON.stringify([
+      {
+        role: merged.experienceRoleOne || "",
+        company: merged.experienceCompanyOne || "",
+        dates: merged.experienceDatesOne || "",
+        description: "",
+      },
+      {
+        role: merged.experienceRoleTwo || "",
+        company: merged.experienceCompanyTwo || "",
+        dates: merged.experienceDatesTwo || "",
+        description: "",
+      },
+    ].filter((experience) => experience.role || experience.company || experience.dates));
+  }
   for (const [key, fallback] of Object.entries(siteContent)) {
     if (typeof merged[key] !== "string") merged[key] = fallback;
   }

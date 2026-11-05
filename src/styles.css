@@ -4321,3 +4321,33 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     transition-duration: .01ms !important;
   }
 }
+
+.about-content-editor .about-experience-editor-list {
+  display: grid;
+  gap: 12px;
+}
+.about-content-editor .about-experience-editor-item {
+  padding: 18px;
+  background: #fff;
+}
+.about-content-editor .about-experience-editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+.about-content-editor .about-experience-editor-heading .eyebrow {
+  margin: 0;
+  color: #77717f;
+}
+.about-content-editor .about-experience-editor-heading .delete-case-study {
+  color: #b34859;
+}
+.about-content-editor .about-add-experience {
+  justify-self: start;
+}
+.about-page-shell .about-experience-entry + .about-experience-entry {
+  margin-top: 21px;
+  padding-top: 2px;
+}

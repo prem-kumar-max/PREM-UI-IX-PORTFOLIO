@@ -36,6 +36,26 @@ function readLegacyState() {
 
 const assetPreview = (value) => value || "";
 
+function parseAboutExperiences(content) {
+  try {
+    const parsed = JSON.parse(content.aboutExperiences || "[]");
+    if (Array.isArray(parsed)) {
+      return parsed.filter((experience) => experience && typeof experience === "object").map((experience) => ({
+        role: typeof experience.role === "string" ? experience.role : "",
+        company: typeof experience.company === "string" ? experience.company : "",
+        dates: typeof experience.dates === "string" ? experience.dates : "",
+        description: typeof experience.description === "string" ? experience.description : "",
+      }));
+    }
+  } catch {
+    return [
+      { role: content.experienceRoleOne || "", company: content.experienceCompanyOne || "", dates: content.experienceDatesOne || "", description: "" },
+      { role: content.experienceRoleTwo || "", company: content.experienceCompanyTwo || "", dates: content.experienceDatesTwo || "", description: "" },
+    ].filter((experience) => experience.role || experience.company || experience.dates);
+  }
+  return [];
+}
+
 function useLocation() {
   const [path, setPath] = useState(window.location.pathname);
   const currentPath = useRef(path);
@@ -511,6 +531,8 @@ function ProjectPage({ project, projects, content, navigate }) {
 }
 
 function AboutPage({ content, navigate, resumeUrl }) {
+  const aboutTools = (content.aboutDesignTools || "").split(/\r?\n/).map((tool) => tool.trim()).filter(Boolean);
+  const aboutExperiences = parseAboutExperiences(content);
   return (
     <>
       <div className="about-page-shell">
@@ -519,9 +541,9 @@ function AboutPage({ content, navigate, resumeUrl }) {
           <div className="page-kicker about-kicker"><span>A LITTLE ABOUT ME</span><span>THE PERSON BEHIND THE PIXELS</span></div>
           <section className="about-hero" aria-labelledby="about-title">
             <div className="about-hero-copy" data-reveal>
-              <p className="eyebrow">DESIGNER · BUILDER · CURIOUS MIND</p>
-              <h1 className="page-title" id="about-title">Curiosity<br /><em>first.</em></h1>
-              <p className="about-hero-note">Thoughtful digital experiences, shaped by a love for design and technology.</p>
+              <p className="eyebrow">{content.aboutRole}</p>
+              <h1 className="page-title" id="about-title">{content.aboutHeadingPrimary}<br /><em>{content.aboutHeadingAccent}</em></h1>
+              <p className="about-hero-note">{content.aboutHeroDescription}</p>
               <span className="about-location"><span /> Based in {content.location}</span>
             </div>
             <figure className="about-portrait" data-reveal>
@@ -534,7 +556,7 @@ function AboutPage({ content, navigate, resumeUrl }) {
             <div className="about-copy" data-reveal>
               <p className="eyebrow">A NOTE FROM PREM</p>
               <p className="about-lede">{content.about}</p>
-              <p className="muted-copy">My path through software development has taught me to see how thoughtful interface decisions and the details behind them work together. I'm now bringing that perspective to product design — making digital tools feel more considered, accessible and easy to use.</p>
+              <p className="muted-copy">{content.aboutStory}</p>
               <a className="about-resume-link" href={resumeUrl || "/Prem-Kumar-Resume.pdf"} target="_blank" rel="noreferrer">View my resume <Arrow diagonal /></a>
             </div>
           </section>
@@ -544,30 +566,37 @@ function AboutPage({ content, navigate, resumeUrl }) {
               <span>{content.title}</span>
             </div>
             <div className="about-tool-pills">
-              {designTools.map(([name, mark, slug], index) => (
-                <span className={`about-tool-pill about-tool-${slug}`} key={slug} style={{ "--pill-order": index }}>
-                  <span className="about-tool-mark" aria-hidden="true">{mark}</span>{name}
-                </span>
-              ))}
+              {aboutTools.map((name) => {
+                const [, mark = "•", slug = "custom"] = designTools.find(([toolName]) => toolName.toLowerCase() === name.toLowerCase()) || [];
+                return (
+                  <span className={`about-tool-pill about-tool-${slug}`} key={name}>
+                    <span className="about-tool-mark" aria-hidden="true">{mark}</span>{name}
+                  </span>
+                );
+              })}
             </div>
           </section>
           <section className="about-facts" aria-label="Education, experience and technologies">
             <div className="about-fact" data-reveal>
               <p className="eyebrow"><span>01</span> EDUCATION</p>
-              <h3>B.Tech, Artificial Intelligence & Data Science</h3>
-              <p>Usha Rama College of Engineering and Technology · 2025</p>
-              <p>CGPA 7.60 / 10</p>
+              <h3>{content.educationQualification}</h3>
+              <p>{content.educationInstitution}{content.educationYear ? ` · ${content.educationYear}` : ""}</p>
+              <p>{content.educationGrade}</p>
             </div>
             <div className="about-fact" data-reveal>
               <p className="eyebrow"><span>02</span> EXPERIENCE</p>
-              <h3>Java Full Stack Developer Intern</h3>
-              <p>Makeskilled · Jul — Oct 2024</p>
-              <h3>Android Developer Intern</h3>
-              <p>AICTE EduSkills · Jan — Mar 2024</p>
+              {aboutExperiences.map((experience, index) => (
+                <div className="about-experience-entry" key={`${experience.role || "experience"}-${index}`}>
+                  {(experience.role || experience.company) && <h3>{experience.role || experience.company}</h3>}
+                  {experience.role && experience.company && <p>{experience.company}{experience.dates ? ` · ${experience.dates}` : ""}</p>}
+                  {!experience.role && experience.company && experience.dates && <p>{experience.dates}</p>}
+                  {experience.description && <p>{experience.description}</p>}
+                </div>
+              ))}
             </div>
             <div className="about-fact" data-reveal>
               <p className="eyebrow"><span>03</span> TOOLS & TECHNOLOGY</p>
-              <p className="skill-cloud">React.js · Angular · Flutter · HTML5 · CSS3 · JavaScript · Python · Java · SQL · Spring Boot · Django · Flask · REST APIs · Git · Responsive design</p>
+              <p className="skill-cloud">{content.technologies}</p>
             </div>
           </section>
         </main>
@@ -761,13 +790,13 @@ function AdminLogin({ error: serverError, onLogin }) {
 }
 
 function AdminShell({ children, section, setSection, onLogout, navigate, dirty }) {
-  const navItems = [["overview", "Overview"], ["projects", "Case studies"], ["content", "Site content"], ["settings", "Settings"]];
+  const navItems = [["overview", "Overview"], ["projects", "Case studies"], ["content", "Site content"], ["about", "About page"], ["settings", "Settings"]];
   return (
     <div className="admin-layout">
       <aside className="admin-sidebar">
         <Brand onClick={() => navigate("/")} />
         <p className="admin-label">WORKSPACE</p>
-        <nav>{navItems.map(([id, label]) => <button key={id} className={section === id ? "admin-nav-active" : ""} onClick={() => setSection(id)}><span className={`admin-nav-icon icon-${id}`}>{id === "overview" ? "◫" : id === "projects" ? "▤" : "◈"}</span>{label}</button>)}</nav>
+        <nav>{navItems.map(([id, label]) => <button key={id} className={section === id ? "admin-nav-active" : ""} onClick={() => setSection(id)}><span className={`admin-nav-icon icon-${id}`}>{id === "overview" ? "◫" : id === "projects" ? "▤" : id === "about" ? "◉" : "◈"}</span>{label}</button>)}</nav>
         <div className="admin-side-bottom"><span className="status-dot" />Supabase CMS<button onClick={() => navigate("/")}>↗ View portfolio</button><button onClick={onLogout}>↪ Sign out</button></div>
       </aside>
       <div className="admin-main">
@@ -1171,7 +1200,155 @@ function SiteContentEditor({ content, onSave, onDirtyChange }) {
       setSaving(false);
     }
   };
-  return <div className="admin-page content-editor-page"><div className="admin-page-heading"><div><p className="eyebrow">YOUR VOICE, YOUR DETAILS</p><h1>Site content</h1><p>Update your introduction and how people can reach you.</p></div><button className="button-dark" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save changes"} <Arrow /></button></div>{saved && <p className="inline-notice">Your site content has been saved.</p>}{notice && <p className="form-error" role="alert">{notice}</p>}<section className="editor-card content-form-card"><div className="editor-section-head"><span>01</span><div><h2>Introduction</h2><p>These details appear across your portfolio.</p></div></div><div className="field-grid"><label>Your name<input value={form.name} onChange={(event) => update("name", event.target.value)} /></label><label>Professional title<input value={form.title} onChange={(event) => update("title", event.target.value)} /></label><label className="field-span">Hero headline<textarea rows="2" value={form.headline} onChange={(event) => update("headline", event.target.value)} /></label><label className="field-span">Short introduction<textarea rows="3" value={form.intro} onChange={(event) => update("intro", event.target.value)} /></label><label className="field-span">About paragraph<textarea rows="4" value={form.about} onChange={(event) => update("about", event.target.value)} /></label></div></section><section className="editor-card content-form-card"><div className="editor-section-head"><span>02</span><div><h2>Contact & links</h2><p>Keep your public contact details current.</p></div></div><div className="field-grid"><label>Email<input type="email" value={form.email} onChange={(event) => update("email", event.target.value)} /></label><label>Phone<input value={form.phone} onChange={(event) => update("phone", event.target.value)} /></label><label>LinkedIn URL<input value={form.linkedin} onChange={(event) => update("linkedin", event.target.value)} /></label><label>GitHub URL<input value={form.github} onChange={(event) => update("github", event.target.value)} /></label><label>Behance URL<input value={form.behance} onChange={(event) => update("behance", event.target.value)} /></label><label>Location<input value={form.location} onChange={(event) => update("location", event.target.value)} /></label></div></section></div>;
+  return (
+    <div className="admin-page content-editor-page">
+      <div className="admin-page-heading">
+        <div><p className="eyebrow">YOUR VOICE, YOUR DETAILS</p><h1>Site content</h1><p>Update your portfolio introduction and contact links.</p></div>
+        <button className="button-dark" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save changes"} <Arrow /></button>
+      </div>
+      {saved && <p className="inline-notice">Your site content has been saved.</p>}
+      {notice && <p className="form-error" role="alert">{notice}</p>}
+      <section className="editor-card content-form-card">
+        <div className="editor-section-head"><span>01</span><div><h2>Introduction</h2><p>These details appear across your portfolio.</p></div></div>
+        <div className="field-grid">
+          <label>Your name<input value={form.name} onChange={(event) => update("name", event.target.value)} /></label>
+          <label>Professional title<input value={form.title} onChange={(event) => update("title", event.target.value)} /></label>
+          <label className="field-span">Hero headline<textarea rows="2" value={form.headline} onChange={(event) => update("headline", event.target.value)} /></label>
+          <label className="field-span">Short introduction<textarea rows="3" value={form.intro} onChange={(event) => update("intro", event.target.value)} /></label>
+        </div>
+      </section>
+      <section className="editor-card content-form-card">
+        <div className="editor-section-head"><span>02</span><div><h2>Contact & links</h2><p>Keep your public contact details current.</p></div></div>
+        <div className="field-grid">
+          <label>Email<input type="email" value={form.email} onChange={(event) => update("email", event.target.value)} /></label>
+          <label>Phone<input value={form.phone} onChange={(event) => update("phone", event.target.value)} /></label>
+          <label>LinkedIn URL<input value={form.linkedin} onChange={(event) => update("linkedin", event.target.value)} /></label>
+          <label>GitHub URL<input value={form.github} onChange={(event) => update("github", event.target.value)} /></label>
+          <label>Behance URL<input value={form.behance} onChange={(event) => update("behance", event.target.value)} /></label>
+          <label>Location<input value={form.location} onChange={(event) => update("location", event.target.value)} /></label>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AboutContentEditor({ content, onSave, onDirtyChange }) {
+  const [form, setForm] = useState(content);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [notice, setNotice] = useState("");
+  const savedContent = useRef(JSON.stringify(content));
+  const experiences = parseAboutExperiences(form);
+  const hasUnsavedChanges = JSON.stringify(form) !== savedContent.current;
+
+  useEffect(() => setForm(content), [content]);
+  useEffect(() => {
+    savedContent.current = JSON.stringify(content);
+  }, [content]);
+  useEffect(() => {
+    onDirtyChange(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onDirtyChange]);
+  useEffect(() => {
+    if (!hasUnsavedChanges) return undefined;
+    const warnBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  const update = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    setSaved(false);
+  };
+  const updateExperience = (index, key, value) => {
+    const updated = parseAboutExperiences(form).map((experience, experienceIndex) => (
+      experienceIndex === index ? { ...experience, [key]: value } : experience
+    ));
+    update("aboutExperiences", JSON.stringify(updated));
+  };
+  const addExperience = () => {
+    update("aboutExperiences", JSON.stringify([...experiences, { role: "", company: "", dates: "", description: "" }]));
+  };
+  const removeExperience = (index) => {
+    update("aboutExperiences", JSON.stringify(experiences.filter((_experience, experienceIndex) => experienceIndex !== index)));
+  };
+  const save = async () => {
+    setSaving(true);
+    setNotice("");
+    setSaved(false);
+    try {
+      await onSave(form);
+      savedContent.current = JSON.stringify(form);
+      onDirtyChange(false);
+      setSaved(true);
+    } catch (error) {
+      setNotice(error.message || "Could not save About page content.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="admin-page content-editor-page about-content-editor">
+      <div className="admin-page-heading">
+        <div><p className="eyebrow">YOUR STORY, YOUR WAY</p><h1>About page</h1><p>Manage your profile, education, experience and design toolkit.</p></div>
+        <button className="button-dark" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save changes"} <Arrow /></button>
+      </div>
+      {saved && <p className="inline-notice" role="status">About page content has been saved.</p>}
+      {notice && <p className="form-error" role="alert">{notice}</p>}
+
+      <section className="editor-card content-form-card">
+        <div className="editor-section-head"><span>01</span><div><h2>About introduction</h2><p>Set the content visitors see at the top of your About page.</p></div></div>
+        <div className="field-grid">
+          <label>Heading<input value={form.aboutHeadingPrimary} onChange={(event) => update("aboutHeadingPrimary", event.target.value)} /></label>
+          <label>Italic heading<input value={form.aboutHeadingAccent} onChange={(event) => update("aboutHeadingAccent", event.target.value)} /></label>
+          <label className="field-span">Role / descriptor<input value={form.aboutRole} onChange={(event) => update("aboutRole", event.target.value)} /></label>
+          <label className="field-span">Hero description<textarea rows="2" value={form.aboutHeroDescription} onChange={(event) => update("aboutHeroDescription", event.target.value)} /></label>
+          <label className="field-span">Biography<textarea rows="4" value={form.about} onChange={(event) => update("about", event.target.value)} /></label>
+          <label className="field-span">Additional biography<textarea rows="5" value={form.aboutStory} onChange={(event) => update("aboutStory", event.target.value)} /></label>
+          <label className="field-span">Design tools (one per line)<textarea rows="7" value={form.aboutDesignTools} onChange={(event) => update("aboutDesignTools", event.target.value)} /></label>
+        </div>
+      </section>
+
+      <section className="editor-card content-form-card">
+        <div className="editor-section-head"><span>02</span><div><h2>Education</h2><p>Update your qualification and institution details.</p></div></div>
+        <div className="field-grid">
+          <label>Qualification<input value={form.educationQualification} onChange={(event) => update("educationQualification", event.target.value)} /></label>
+          <label>Institution<input value={form.educationInstitution} onChange={(event) => update("educationInstitution", event.target.value)} /></label>
+          <label>Year<input value={form.educationYear} onChange={(event) => update("educationYear", event.target.value)} /></label>
+          <label>Result<input value={form.educationGrade} onChange={(event) => update("educationGrade", event.target.value)} /></label>
+        </div>
+      </section>
+
+      <section className="editor-card content-form-card">
+        <div className="editor-section-head"><span>03</span><div><h2>Experience</h2><p>Add a separate entry for each role. Entries appear in order on your About page.</p></div></div>
+        <div className="about-experience-editor-list">
+          {experiences.map((experience, index) => (
+            <section className="editor-card about-experience-editor-item" key={`experience-${index}`}>
+              <div className="about-experience-editor-heading">
+                <p className="eyebrow">EXPERIENCE {String(index + 1).padStart(2, "0")}</p>
+                <button type="button" className="edit-link delete-case-study" onClick={() => removeExperience(index)}>Remove</button>
+              </div>
+              <div className="field-grid">
+                <label>Role<input value={experience.role} onChange={(event) => updateExperience(index, "role", event.target.value)} /></label>
+                <label>Company<input value={experience.company} onChange={(event) => updateExperience(index, "company", event.target.value)} /></label>
+                <label className="field-span">Dates<input value={experience.dates} onChange={(event) => updateExperience(index, "dates", event.target.value)} /></label>
+                <label className="field-span">Description (optional)<textarea rows="3" value={experience.description} onChange={(event) => updateExperience(index, "description", event.target.value)} /></label>
+              </div>
+            </section>
+          ))}
+          <button type="button" className="button-outline about-add-experience" onClick={addExperience}>+ Add experience</button>
+        </div>
+      </section>
+
+      <section className="editor-card content-form-card">
+        <div className="editor-section-head"><span>04</span><div><h2>Tools & technology</h2><p>List your technologies as they should appear on the About page.</p></div></div>
+        <label className="field-span">Tools & technology<textarea rows="4" value={form.technologies} onChange={(event) => update("technologies", event.target.value)} /></label>
+      </section>
+    </div>
+  );
 }
 
 function SettingsManager({ settings: savedSettings, onSave, working, migrationReady, onMigrate, onClearLegacy, onDirtyChange }) {
@@ -1403,7 +1580,8 @@ function AdminPage({ navigate }) {
       {section === "overview" ? <Dashboard projects={data.projects} setSection={safeSetSection} /> :
         section === "projects" ? <CaseStudiesManager projects={data.projects} setProjects={(updater) => setData((current) => ({ ...current, projects: typeof updater === "function" ? updater(current.projects) : updater }))} onSaveProject={saveProject} onDeleteProject={removeProject} onChangeStatus={changeProjectStatus} onUploadAsset={(file, folder) => uploadMedia(file, folder)} onDiscardAsset={(path) => deleteMedia([path])} onDirtyChange={handleDirtyChange} /> :
           section === "content" ? <SiteContentEditor content={data.content} onSave={saveContent} onDirtyChange={handleDirtyChange} /> :
-            <SettingsManager settings={data.settings} onSave={saveSettings} working={working} migrationReady={migrationReady} onMigrate={migrate} onClearLegacy={clearLegacyData} onDirtyChange={handleDirtyChange} />}
+            section === "about" ? <AboutContentEditor content={data.content} onSave={saveContent} onDirtyChange={handleDirtyChange} /> :
+              <SettingsManager settings={data.settings} onSave={saveSettings} working={working} migrationReady={migrationReady} onMigrate={migrate} onClearLegacy={clearLegacyData} onDirtyChange={handleDirtyChange} />}
     </AdminShell>
   );
 }
