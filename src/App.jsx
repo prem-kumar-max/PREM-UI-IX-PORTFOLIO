@@ -1,18 +1,29 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import JSZip from "jszip";
-import { adminPasscodeHash } from "./data/adminPasscode.js";
+import {
+  deleteCaseStudy,
+  deleteMedia,
+  getSession,
+  isValidSlug,
+  loadAdminData,
+  loadPublicData,
+  migrateLegacyData,
+  onAuthStateChange,
+  saveCaseStudy,
+  saveFeaturedLimit,
+  saveSiteContent,
+  signIn,
+  signOut,
+  updateCaseStudyStatus,
+  uploadMedia,
+} from "./api.js";
+import { caseStudies } from "./data/caseStudies.js";
 import { settings } from "./data/settings.js";
-import { deleteAsset, loadAssets, loadWorkingCopy, publishedData, resetWorkingCopy, saveAsset, saveWorkingCopy } from "./data/workingCopy.js";
+import { siteContent } from "./data/siteContent.js";
+import { supabaseConfigError } from "./supabase.js";
 
 const LEGACY_STORAGE_KEY = "prem-portfolio-v1";
-const FILE_DB_NAME = "prem-portfolio-files";
-const FILE_STORE_NAME = "files";
-const MAX_IMAGE_SIZE = 20 * 1024 * 1024;
-const MAX_PDF_SIZE = 10 * 1024 * 1024;
 const profileImage = "/prem-portrait.png";
 const aboutImage = "/prem-about-event.png";
-
-const defaultState = publishedData;
 
 function readLegacyState() {
   try {
@@ -23,82 +34,27 @@ function readLegacyState() {
   }
 }
 
-function readLegacyResumeFiles() {
-  return new Promise((resolve, reject) => {
-    if (!("indexedDB" in window)) {
-      reject(new Error("This browser does not support reading the previous resume backup."));
-      return;
-    }
-    const request = indexedDB.open(FILE_DB_NAME, 1);
-    request.onerror = () => reject(request.error || new Error("Could not open the previous resume backup."));
-    request.onsuccess = () => {
-      const database = request.result;
-      if (!database.objectStoreNames.contains(FILE_STORE_NAME)) {
-        database.close();
-        resolve(null);
-        return;
-      }
-      const transaction = database.transaction(FILE_STORE_NAME, "readonly");
-      const fileRequest = transaction.objectStore(FILE_STORE_NAME).getAll();
-      fileRequest.onsuccess = () => {
-        const files = (fileRequest.result || []).map((entry) => ({ id: entry.id, file: entry.file || entry.blob || null }));
-        database.close();
-        resolve(files);
-      };
-      fileRequest.onerror = () => {
-        database.close();
-        reject(fileRequest.error || new Error("Could not read the previous resume files."));
-      };
-    };
-  });
-}
-
-function assetPreview(path, assetUrls = {}) {
-  if (!path) return "";
-  return assetUrls[path] || assetUrls[path.replace(/^\/+/, "")] || path;
-}
-
-async function resizeImage(file) {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, 1600 / bitmap.width);
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Your browser could not prepare this image.");
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  return new Promise((resolve, reject) => canvas.toBlob(
-    (blob) => blob ? resolve(blob) : reject(new Error("Your browser could not resize this image.")),
-    "image/webp",
-    0.85,
-  ));
-}
-
-async function imageBlobFromValue(value) {
-  if (!value) return null;
-  if (value.startsWith("data:") || value.startsWith("blob:") || value.startsWith("/") || /^https?:\/\//i.test(value)) {
-    const response = await fetch(value);
-    if (response.ok) return response.blob();
-    throw new Error(`Could not read the previous image at ${value}.`);
-  }
-  return null;
-}
-
-async function sha256(value) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
+const assetPreview = (value) => value || "";
 
 function useLocation() {
   const [path, setPath] = useState(window.location.pathname);
+  const currentPath = useRef(path);
   useEffect(() => {
-    const update = () => setPath(window.location.pathname);
+    const update = () => {
+      const navigation = new Event("portfolio:navigate", { cancelable: true });
+      if (!window.dispatchEvent(navigation)) {
+        window.history.pushState({}, "", currentPath.current);
+        return;
+      }
+      currentPath.current = window.location.pathname;
+      setPath(currentPath.current);
+    };
     window.addEventListener("popstate", update);
     return () => window.removeEventListener("popstate", update);
   }, []);
   const navigate = (to) => {
     window.history.pushState({}, "", to);
+    currentPath.current = to;
     setPath(to);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -142,11 +98,11 @@ function Brand({ onClick }) {
 }
 
 function ResumeLinks({ resumeUrl, filename, className = "" }) {
-  const href = resumeUrl || "/Prem-Kumar-Resume.pdf";
+  const href = "/Prem-Kumar-Resume.pdf";
   return (
     <span className={`resume-nav-links ${className}`}>
       <a href={href} target="_blank" rel="noreferrer">View resume</a>
-      <a href={href} download={filename || "Prem-Kumar-Resume.pdf"}>Download</a>
+      <a href={href} download="Prem-Kumar-Resume.pdf">Download</a>
     </span>
   );
 }
@@ -165,12 +121,12 @@ function Header({ navigate, active = "", resumeUrl, resumeFilename }) {
   );
 }
 
-function Footer({ content, navigate }) {
+function Footer({ content, navigate, variant = "" }) {
   return (
-    <footer className="site-footer">
+    <footer className={`site-footer ${variant}`}>
       <div className="footer-top" data-reveal>
         <p className="eyebrow">HAVE A GOOD ONE IN MIND?</p>
-        <button className="footer-cta" onClick={() => navigate("/contact")}>Let’s make it matter. <Arrow diagonal /></button>
+        <button className="footer-cta" onClick={() => navigate("/contact")}>Let’s make it <em>matter.</em> <Arrow diagonal /></button>
       </div>
       <div className="footer-bottom" data-reveal>
         <span>© {new Date().getFullYear()} {content.name}</span>
@@ -193,7 +149,7 @@ function ProjectCard({ project, index, onClick, reveal = false }) {
     <button className={`project-card project-card-${index % 3}`} onClick={onClick} data-reveal={reveal ? "" : undefined}>
       <div className="project-image">
         {thumbnail ? (
-          <img src={thumbnail} alt={`${project.title} project preview`} />
+          <img src={thumbnail} alt={project.thumbnailAlt || `${project.title} project preview`} />
         ) : (
           <div className={`project-art art-${index % 3}`}>
             <span className="art-index">0{index + 1}</span>
@@ -218,6 +174,8 @@ function ProjectCard({ project, index, onClick, reveal = false }) {
 function HomePage({ content, projects, navigate, resumeUrl, resumeFilename, featuredLimit = 3 }) {
   const featured = projects.filter((project) => project.status === "Published" && project.featured);
   const [firstName = "PREM", secondName = "KUMAR"] = content.name.trim().split(/\s+/);
+  const headlineWords = content.headline.trim().split(/\s+/);
+  const headlineAccent = headlineWords.pop();
   return (
     <>
       <main className="home-page">
@@ -272,7 +230,7 @@ function HomePage({ content, projects, navigate, resumeUrl, resumeFilename, feat
         <section className="intro-section section-shell">
           <p className="eyebrow" data-reveal>A THOUGHTFUL APPROACH TO DIGITAL</p>
           <div className="intro-grid">
-            <h2 data-reveal>{content.headline}</h2>
+            <h2 data-reveal>{headlineWords.join(" ")} <em>{headlineAccent}</em></h2>
             <div data-reveal>
               <p>{content.about}</p>
               <button className="text-link" onClick={() => navigate("/about")}>A little more about me <Arrow /></button>
@@ -309,7 +267,7 @@ function HomePage({ content, projects, navigate, resumeUrl, resumeFilename, feat
           </div>
         </section>
       </main>
-      <Footer content={content} navigate={navigate} />
+      <Footer content={content} navigate={navigate} variant="home-footer" />
     </>
   );
 }
@@ -443,7 +401,7 @@ function ProjectPage({ project, projects, content, navigate }) {
           {(project.role || project.tools || project.duration) && <dl><div><dt>ROLE</dt><dd>{project.role || "—"}</dd></div><div><dt>TOOLS</dt><dd>{project.tools || "—"}</dd></div><div><dt>DURATION</dt><dd>{project.duration || "—"}</dd></div></dl>}
         </div>
         {(!figmaEmbedUrl || project.thumbnailUrl || project.image) && <div className="case-cover">
-          {(project.thumbnailUrl || project.image) ? <img src={project.thumbnailUrl || project.image} alt={`${project.title} cover`} /> : <div className="project-art art-0"><span className="art-title">{project.title}</span><span className="art-orbit" /></div>}
+          {(project.thumbnailUrl || project.image) ? <img src={project.thumbnailUrl || project.image} alt={project.thumbnailAlt || `${project.title} cover`} /> : <div className="project-art art-0"><span className="art-title">{project.title}</span><span className="art-orbit" /></div>}
         </div>}
         {figmaEmbedUrl && <>
           <FigmaEmbed src={figmaEmbedUrl} title={project.title} />
@@ -453,7 +411,7 @@ function ProjectPage({ project, projects, content, navigate }) {
           {project.sections.map((section, index) => (
             <section className="case-block" key={`${section.title}-${index}`}>
               <span className="case-number">0{index + 1}</span>
-              <div><h2>{section.title}</h2><p>{section.body}</p>{section.image && <img className="section-image" src={section.image} alt={section.title} />}</div>
+              <div><h2>{section.title}</h2><p>{section.body}</p>{section.image && <img className="section-image" src={section.image} alt={section.imageAlt || section.title} />}</div>
             </section>
           ))}
         </div>}
@@ -511,7 +469,8 @@ function ContactPage({ content, navigate }) {
 }
 
 function AdminLogin({ error: serverError, onLogin }) {
-  const [passcode, setPasscode] = useState("");
+  const [email, setEmail] = useState("prem64748494@gmail.com");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = async (event) => {
@@ -519,7 +478,7 @@ function AdminLogin({ error: serverError, onLogin }) {
     setError("");
     setBusy(true);
     try {
-      await onLogin(passcode);
+      await onLogin(email, password);
     } catch (loginError) {
       setError(loginError.message);
     } finally {
@@ -532,10 +491,12 @@ function AdminLogin({ error: serverError, onLogin }) {
         <Brand onClick={() => { window.location.href = "/"; }} />
         <p className="eyebrow">ADMINISTRATOR ACCESS</p>
         <h1>Welcome back.</h1>
-        <p>Enter your passcode to open the portfolio CMS. Changes stay on this device until you export and push them to GitHub.</p>
+        <p>Sign in with your administrator email and password to manage your portfolio.</p>
         <form onSubmit={submit}>
-          <label htmlFor="admin-passcode">Passcode</label>
-          <input id="admin-passcode" type="password" autoComplete="current-password" value={passcode} onChange={(event) => setPasscode(event.target.value)} required />
+          <label htmlFor="admin-email">Email</label>
+          <input id="admin-email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          <label htmlFor="admin-password">Password</label>
+          <input id="admin-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
           <button className="button-dark" type="submit" disabled={busy}>{busy ? "Checking…" : "Open CMS"} <Arrow /></button>
         </form>
         {(error || serverError) && <p className="form-error" role="alert">{error || serverError}</p>}
@@ -546,14 +507,14 @@ function AdminLogin({ error: serverError, onLogin }) {
 }
 
 function AdminShell({ children, section, setSection, onLogout, navigate, dirty }) {
-  const navItems = [["overview", "Overview"], ["projects", "Case studies"], ["resumes", "Resumes"], ["content", "Site content"], ["settings", "Export & settings"]];
+  const navItems = [["overview", "Overview"], ["projects", "Case studies"], ["content", "Site content"], ["settings", "Settings"]];
   return (
     <div className="admin-layout">
       <aside className="admin-sidebar">
         <Brand onClick={() => navigate("/")} />
         <p className="admin-label">WORKSPACE</p>
-        <nav>{navItems.map(([id, label]) => <button key={id} className={section === id ? "admin-nav-active" : ""} onClick={() => setSection(id)}><span className={`admin-nav-icon icon-${id}`}>{id === "overview" ? "◫" : id === "projects" ? "▤" : id === "resumes" ? "⇧" : "◈"}</span>{label}</button>)}</nav>
-        <div className="admin-side-bottom"><span className="status-dot" />Local working copy<button onClick={() => navigate("/")}>↗ View portfolio</button><button onClick={onLogout}>↪ Sign out</button></div>
+        <nav>{navItems.map(([id, label]) => <button key={id} className={section === id ? "admin-nav-active" : ""} onClick={() => setSection(id)}><span className={`admin-nav-icon icon-${id}`}>{id === "overview" ? "◫" : id === "projects" ? "▤" : "◈"}</span>{label}</button>)}</nav>
+        <div className="admin-side-bottom"><span className="status-dot" />Supabase CMS<button onClick={() => navigate("/")}>↗ View portfolio</button><button onClick={onLogout}>↪ Sign out</button></div>
       </aside>
       <div className="admin-main">
         <header className="admin-topbar"><div><span className="admin-breadcrumb">Workspace</span><span className="breadcrumb-separator">/</span><strong>{navItems.find(([id]) => id === section)?.[1]}</strong></div><span className="local-badge"><span />{dirty ? " UNSAVED CHANGES" : " WORKING COPY"}</span></header>
@@ -570,15 +531,17 @@ function Dashboard({ projects, setSection }) {
     <div className="admin-page">
       <div className="admin-page-heading"><div><p className="eyebrow">THURSDAY, YOUR WORKSPACE</p><h1>Good to see you, Prem.</h1><p>Here’s what’s happening with your portfolio.</p></div><button className="button-dark" onClick={() => setSection("projects")}>+ Add New Case Study</button></div>
       <div className="stats-grid"><div className="stat-card"><span>ALL PROJECTS</span><strong>{projects.length.toString().padStart(2, "0")}</strong><small>Across your portfolio</small></div><div className="stat-card"><span>PUBLISHED</span><strong>{published.toString().padStart(2, "0")}</strong><small>Visible on your site</small></div><div className="stat-card"><span>DRAFTS</span><strong>{drafts.toString().padStart(2, "0")}</strong><small>Still in progress</small></div><div className="stat-card"><span>FEATURED</span><strong>{projects.filter((project) => project.featured && project.status === "Published").length.toString().padStart(2, "0")}</strong><small>On your home page</small></div></div>
-      <div className="admin-dashboard-grid"><section className="admin-panel recent-panel"><div className="panel-heading"><div><p className="eyebrow">YOUR CONTENT</p><h2>Recent case studies</h2></div><button className="text-link" onClick={() => setSection("projects")}>Manage all <Arrow /></button></div>{projects.slice(0, 4).map((project) => <div className="recent-row" key={project.id}><span className="recent-thumb">{(project.thumbnailUrl || project.thumbnail || project.image) && <img src={project.thumbnailUrl || project.thumbnail || project.image} alt="" />}</span><div><strong>{project.title}</strong><span>{project.description || [project.category, project.year].filter(Boolean).join(" · ")}</span></div><span className={`status-pill status-${project.status.toLowerCase()}`}>{project.status}</span></div>)}{projects.length === 0 && <p className="empty-note">Your first case study starts here.</p>}</section><section className="admin-panel quick-panel"><p className="eyebrow">QUICK START</p><h2>Make your next idea<br />feel at home here.</h2><p>Case studies marked published appear on your site after you export and push the changes to GitHub.</p><button className="button-outline" onClick={() => setSection("projects")}>Create a case study <Arrow /></button><div className="quick-decoration">P.</div></section></div>
+      <div className="admin-dashboard-grid"><section className="admin-panel recent-panel"><div className="panel-heading"><div><p className="eyebrow">YOUR CONTENT</p><h2>Recent case studies</h2></div><button className="text-link" onClick={() => setSection("projects")}>Manage all <Arrow /></button></div>{projects.slice(0, 4).map((project) => <div className="recent-row" key={project.id}><span className="recent-thumb">{(project.thumbnailUrl || project.thumbnail || project.image) && <img src={project.thumbnailUrl || project.thumbnail || project.image} alt={project.thumbnailAlt || ""} />}</span><div><strong>{project.title}</strong><span>{project.description || [project.category, project.year].filter(Boolean).join(" · ")}</span></div><span className={`status-pill status-${project.status.toLowerCase()}`}>{project.status}</span></div>)}{projects.length === 0 && <p className="empty-note">Your first case study starts here.</p>}</section><section className="admin-panel quick-panel"><p className="eyebrow">QUICK START</p><h2>Make your next idea<br />feel at home here.</h2><p>Published case studies are visible to visitors immediately.</p><button className="button-outline" onClick={() => setSection("projects")}>Create a case study <Arrow /></button><div className="quick-decoration">P.</div></section></div>
     </div>
   );
 }
 
-function FigmaCaseStudyEditor({ project, existing, onSave, onCancel, onDelete, onUploadAsset, onDiscardAsset, assetUrls }) {
+function FigmaCaseStudyEditor({ project, existing, onSave, onCancel, onDelete, onUploadAsset, onDiscardAsset, onDirtyChange }) {
   const [form, setForm] = useState(() => project ? {
     ...project,
-    thumbnailUrl: project.thumbnail || project.thumbnailUrl || project.image || "",
+    thumbnailUrl: project.thumbnailUrl || project.image || "",
+    thumbnailPath: project.thumbnailPath || "",
+    thumbnailAlt: project.thumbnailAlt || "",
     figmaEmbedCode: project.figmaEmbedUrl || "",
   } : {
     id: crypto.randomUUID(),
@@ -586,6 +549,8 @@ function FigmaCaseStudyEditor({ project, existing, onSave, onCancel, onDelete, o
     slug: "",
     description: "",
     thumbnailUrl: "",
+    thumbnailPath: "",
+    thumbnailAlt: "",
     figmaEmbedCode: "",
     sections: [],
     status: "Draft",
@@ -602,13 +567,33 @@ function FigmaCaseStudyEditor({ project, existing, onSave, onCancel, onDelete, o
   const [saving, setSaving] = useState(false);
   const isSectionUploading = Object.keys(sectionUploadProgress).length > 0;
   const uploadedAssets = useRef([]);
+  const initialForm = useRef(JSON.stringify(form));
+  const hasUnsavedChanges = JSON.stringify(form) !== initialForm.current;
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
   const validatedEmbedUrl = extractFigmaEmbedUrl(form.figmaEmbedCode);
+  const slugIsValid = isValidSlug(form.slug);
 
-  const save = (status) => {
+  useEffect(() => {
+    onDirtyChange(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onDirtyChange]);
+  useEffect(() => {
+    if (!hasUnsavedChanges) return undefined;
+    const warnBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  const save = async (status) => {
     if (uploadProgress !== null || isSectionUploading || saving) return;
     if (!form.title.trim()) {
-      setNotice("Add a project title before saving.");
+      setNotice("Project title is required.");
+      return;
+    }
+    if (!slugIsValid) {
+      setNotice("Enter a valid lowercase slug using letters, numbers, and hyphens.");
       return;
     }
     if (form.figmaEmbedCode.trim() && !validatedEmbedUrl) {
@@ -624,9 +609,8 @@ function FigmaCaseStudyEditor({ project, existing, onSave, onCancel, onDelete, o
     const saved = {
       ...savedForm,
       title: form.title.trim(),
-      slug: slugify(form.slug || form.title),
+      slug: form.slug,
       description: form.description.trim(),
-      thumbnail: form.thumbnailUrl,
       thumbnailUrl: form.thumbnailUrl,
       sections: form.sections.map(({ imagePreviewUrl, ...item }) => item),
       figmaEmbedUrl: validatedEmbedUrl,
@@ -634,36 +618,34 @@ function FigmaCaseStudyEditor({ project, existing, onSave, onCancel, onDelete, o
       featured: Boolean(form.featured),
       updatedAt: now,
       createdAt: form.createdAt || now,
-      publishedAt: status === "Published" ? (form.publishedAt || now) : null,
+      publishedAt: status === "Published" ? (form.publishedAt || now) : form.publishedAt || null,
     };
     setSaving(true);
     setNotice("");
-    Promise.resolve(onSave(saved, uploadedAssets.current))
-      .then(() => { uploadedAssets.current = []; })
-      .catch((error) => setNotice(error.message || "Could not save this case study."))
-      .finally(() => setSaving(false));
+    try {
+      await onSave(saved, uploadedAssets.current);
+      uploadedAssets.current = [];
+      onDirtyChange(false);
+    } catch (error) {
+      setNotice(error.message || "Could not save this case study.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const readImage = async (file) => {
     if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setNotice("Choose a JPG, PNG, or WebP image.");
-      return;
-    }
-    if (file.size > MAX_IMAGE_SIZE) {
-      setNotice("Please choose an image smaller than 20 MB.");
-      return;
-    }
     setNotice("");
     setUploadProgress(0);
     try {
-      const media = await onUploadAsset(file, setUploadProgress, "thumbnails", form.slug || form.title);
+      const media = await onUploadAsset(file, "thumbnails");
       uploadedAssets.current.push(media);
       setForm((current) => ({
         ...current,
-        thumbnailUrl: media.path,
-        thumbnailPreviewUrl: media.previewUrl,
+        thumbnailUrl: media.url,
+        thumbnailPath: media.path,
       }));
+      setUploadProgress(100);
     } catch (error) {
       setNotice(error.message || "Could not upload this image.");
     } finally {
@@ -673,27 +655,18 @@ function FigmaCaseStudyEditor({ project, existing, onSave, onCancel, onDelete, o
 
   const readSectionImage = async (index, file) => {
     if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setNotice("Choose a JPG, PNG, or WebP image.");
-      return;
-    }
-    if (file.size > MAX_IMAGE_SIZE) {
-      setNotice("Please choose an image smaller than 20 MB.");
-      return;
-    }
     setNotice("");
     setSectionUploadProgress((current) => ({ ...current, [index]: 0 }));
     try {
-      const media = await onUploadAsset(file, (progress) => {
-        setSectionUploadProgress((current) => ({ ...current, [index]: progress }));
-      }, "case-images", `${form.slug || form.title}-${index + 1}`);
+      const media = await onUploadAsset(file, "sections");
       uploadedAssets.current.push(media);
       setForm((current) => ({
         ...current,
         sections: current.sections.map((section, sectionIndex) => sectionIndex === index
-          ? { ...section, image: media.path, imagePreviewUrl: media.previewUrl }
+          ? { ...section, image: media.url, imagePath: media.path }
           : section),
       }));
+      setSectionUploadProgress((current) => ({ ...current, [index]: 100 }));
     } catch (error) {
       setNotice(error.message || "Could not upload this case study image.");
     } finally {
@@ -721,10 +694,17 @@ function FigmaCaseStudyEditor({ project, existing, onSave, onCancel, onDelete, o
     setPreviewVisible((visible) => !visible);
   };
   const cancelEditor = async () => {
-    for (const media of uploadedAssets.current) {
-      await onDiscardAsset(media.path);
+    if (hasUnsavedChanges && !window.confirm("Discard your unsaved case study edits?")) return;
+    try {
+      for (const media of uploadedAssets.current) {
+        await onDiscardAsset(media.path);
+      }
+    } catch (error) {
+      setNotice(`Could not remove an unsaved upload: ${error.message}`);
+      return;
     }
     uploadedAssets.current = [];
+    onDirtyChange(false);
     onCancel();
   };
 
@@ -748,8 +728,10 @@ function FigmaCaseStudyEditor({ project, existing, onSave, onCancel, onDelete, o
           <section className="editor-card">
             <div className="editor-section-head"><span>01</span><div><h2>Project details</h2><p>The story visitors will see on your portfolio.</p></div></div>
             <div className="field-grid">
-              <label className="field-span">Project title<input value={form.title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. SkillConnect" required /></label>
-              <label className="field-span">Project URL slug<input value={form.slug} onChange={(event) => setSlug(event.target.value)} placeholder="skillconnect" /></label>
+              <label className="field-span">Project title<input value={form.title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. SkillConnect" required aria-invalid={!form.title.trim()} /></label>
+              {!form.title.trim() && <p className="form-error field-span" role="alert">Project title is required.</p>}
+              <label className="field-span">Project URL slug<input value={form.slug} onChange={(event) => setSlug(event.target.value)} placeholder="skillconnect" required aria-invalid={!slugIsValid} /></label>
+              {!slugIsValid && <p className="form-error field-span" role="alert">Use lowercase letters, numbers, and hyphens, with no leading or trailing hyphen.</p>}
               <label className="field-span">Project description<textarea rows="3" value={form.description} onChange={(event) => update("description", event.target.value)} placeholder="A short introduction to the project" /></label>
               <label>Category<input value={form.category || ""} onChange={(event) => update("category", event.target.value)} /></label>
               <label>Year<input value={form.year || ""} onChange={(event) => update("year", event.target.value)} /></label>
@@ -761,6 +743,7 @@ function FigmaCaseStudyEditor({ project, existing, onSave, onCancel, onDelete, o
           <section className="editor-card">
             <div className="editor-section-head"><span>02</span><div><h2>Figma prototype</h2><p>Paste a Figma iframe or its embed URL. Only the validated URL is stored.</p></div></div>
             <label className="figma-code-field">Figma Prototype Embed Code<textarea rows="7" value={form.figmaEmbedCode} onChange={(event) => { update("figmaEmbedCode", event.target.value); setPreviewVisible(false); setNotice(""); }} placeholder="Paste your Figma iframe embed code here..." spellCheck="false" /></label>
+            {(form.figmaEmbedCode.trim() || form.status === "Published") && !validatedEmbedUrl && <p className="form-error" role="alert">Use an HTTPS Figma prototype embed URL from embed.figma.com.</p>}
             <div className="figma-field-actions"><button type="button" className="button-outline" onClick={preview}>{previewVisible ? "Hide preview" : "Preview"}</button>{validatedEmbedUrl && <a className="text-link" href={validatedEmbedUrl} target="_blank" rel="noreferrer">Open in Figma <Arrow diagonal /></a>}</div>
             {previewVisible && validatedEmbedUrl && <div className="figma-preview-panel"><p className="eyebrow">INTERACTIVE PROTOTYPE PREVIEW</p><FigmaEmbed key={validatedEmbedUrl} src={validatedEmbedUrl} title={form.title || "Case study"} /></div>}
           </section>
@@ -772,32 +755,34 @@ function FigmaCaseStudyEditor({ project, existing, onSave, onCancel, onDelete, o
                   <div className="field-grid">
                     <label className="field-span">Section title<input value={section.title || ""} onChange={(event) => update("sections", form.sections.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item))} /></label>
                     <label className="field-span">Section content<textarea rows="4" value={section.body || ""} onChange={(event) => update("sections", form.sections.map((item, itemIndex) => itemIndex === index ? { ...item, body: event.target.value } : item))} /></label>
-                    {section.image && <img className="field-span section-image" src={section.imagePreviewUrl || assetPreview(section.image, assetUrls)} alt={`${section.title || "Case study"} preview`} />}
+                    {section.image && <img className="field-span section-image" src={section.imagePreviewUrl || assetPreview(section.image)} alt={section.imageAlt || `${section.title || "Case study"} preview`} />}
+                    <label className="field-span">Section image alt text<input value={section.imageAlt || ""} onChange={(event) => update("sections", form.sections.map((item, itemIndex) => itemIndex === index ? { ...item, imageAlt: event.target.value } : item))} /></label>
                     <label className="thumbnail-file-button">{sectionUploadProgress[index] !== undefined ? `Uploading ${sectionUploadProgress[index]}%` : section.image ? "Replace section image" : "Add section image"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={sectionUploadProgress[index] !== undefined || saving} onChange={(event) => { readSectionImage(index, event.target.files?.[0]); event.target.value = ""; }} /></label>
                     {sectionUploadProgress[index] !== undefined && <progress className="upload-progress" max="100" value={sectionUploadProgress[index]} aria-label="Case study image upload progress" />}
-                    {section.image && <button type="button" className="remove-image" onClick={() => update("sections", form.sections.map((item, itemIndex) => itemIndex === index ? { ...item, image: "", imagePublicId: null } : item))}>Remove image</button>}
+                    {section.image && <button type="button" className="remove-image" onClick={() => update("sections", form.sections.map((item, itemIndex) => itemIndex === index ? { ...item, image: "", imagePath: "", imageAlt: "" } : item))}>Remove image</button>}
                     <button type="button" className="edit-link delete-case-study" disabled={isSectionUploading} onClick={() => update("sections", form.sections.filter((_item, itemIndex) => itemIndex !== index))}>Remove section</button>
                   </div>
                 </div>
               ))}
-              <button type="button" className="button-outline" disabled={saving} onClick={() => update("sections", [...form.sections, { title: "", body: "", image: "", imagePublicId: null }])}>+ Add story section</button>
+              <button type="button" className="button-outline" disabled={saving} onClick={() => update("sections", [...form.sections, { title: "", body: "", image: "", imagePath: "", imageAlt: "" }])}>+ Add story section</button>
             </div>
           </section>
         </div>
         <aside className="editor-aside">
           <section className="editor-card">
-            <div className="editor-section-head"><span>04</span><div><h2>Project thumbnail</h2><p>JPG, PNG or WebP · up to 20 MB, resized for the web</p></div></div>
+            <div className="editor-section-head"><span>04</span><div><h2>Project thumbnail</h2><p>JPG, PNG or WebP · up to 8 MB, resized for the web</p></div></div>
             <div
               className={`case-thumbnail-upload${isDragging ? " is-dragging" : ""}`}
               onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
               onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsDragging(false); }}
               onDrop={(event) => { event.preventDefault(); setIsDragging(false); readImage(event.dataTransfer.files?.[0]); }}
             >
-              {form.thumbnailUrl ? <img src={form.thumbnailPreviewUrl || assetPreview(form.thumbnailUrl, assetUrls)} alt="Project thumbnail preview" /> : <div className="upload-placeholder"><span>↥</span><strong>Drop an image here</strong><small>or choose a file from your device</small></div>}
+              {form.thumbnailUrl ? <img src={form.thumbnailPreviewUrl || assetPreview(form.thumbnailUrl)} alt={form.thumbnailAlt || "Project thumbnail preview"} /> : <div className="upload-placeholder"><span>↥</span><strong>Drop an image here</strong><small>or choose a file from your device</small></div>}
               <label className="thumbnail-file-button">{uploadProgress !== null ? `Uploading ${uploadProgress}%` : form.thumbnailUrl ? "Replace image" : "Choose image"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadProgress !== null || saving} onChange={(event) => { readImage(event.target.files?.[0]); event.target.value = ""; }} /></label>
               {uploadProgress !== null && <progress className="upload-progress" max="100" value={uploadProgress} aria-label="Image upload progress" />}
-              {form.thumbnailUrl && <button type="button" className="remove-image" onClick={() => setForm((current) => ({ ...current, thumbnailUrl: "", thumbnailPreviewUrl: "" }))}>Remove image</button>}
+              {form.thumbnailUrl && <button type="button" className="remove-image" onClick={() => setForm((current) => ({ ...current, thumbnailUrl: "", thumbnailPath: "", thumbnailAlt: "", thumbnailPreviewUrl: "" }))}>Remove image</button>}
             </div>
+            <label className="field-span">Thumbnail alt text<input value={form.thumbnailAlt} onChange={(event) => update("thumbnailAlt", event.target.value)} /></label>
           </section>
           <section className="editor-card publish-card">
             <p className="eyebrow">PUBLISHING</p>
@@ -811,21 +796,14 @@ function FigmaCaseStudyEditor({ project, existing, onSave, onCancel, onDelete, o
   );
 }
 
-function CaseStudiesManager({ projects, setProjects, onSaveProject, onDeleteProject, onChangeStatus, onUploadAsset, onDiscardAsset, assetUrls }) {
+function CaseStudiesManager({ projects, setProjects, onSaveProject, onDeleteProject, onChangeStatus, onUploadAsset, onDiscardAsset, onDirtyChange }) {
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const [notice, setNotice] = useState("");
 
   const saveProject = async (project, pendingMedia) => {
-    const baseSlug = slugify(project.slug || project.title) || "case-study";
-    let slug = baseSlug;
-    let suffix = 2;
-    while (projects.some((item) => item.id !== project.id && item.slug === slug)) {
-      slug = `${baseSlug}-${suffix}`;
-      suffix += 1;
-    }
-    const saved = await onSaveProject({ ...project, slug }, pendingMedia);
+    const saved = await onSaveProject(project, pendingMedia);
     setProjects((current) => current.some((item) => item.id === saved.id)
       ? current.map((item) => item.id === saved.id ? saved : item)
       : [saved, ...current]);
@@ -837,9 +815,10 @@ function CaseStudiesManager({ projects, setProjects, onSaveProject, onDeleteProj
     const target = projects.find((project) => project.id === id);
     if (!target || !window.confirm(`Delete “${target.title}”? This cannot be undone.`)) return;
     try {
-      await onDeleteProject(id);
+      await onDeleteProject(target);
       setProjects((current) => current.filter((project) => project.id !== id));
       setEditing(null);
+      onDirtyChange(false);
       setNotice("Case study deleted.");
     } catch (error) {
       setNotice(error.message || "Could not delete the case study.");
@@ -866,6 +845,8 @@ function CaseStudiesManager({ projects, setProjects, onSaveProject, onDeleteProj
     slug: "",
     description: "",
     thumbnailUrl: "",
+    thumbnailPath: "",
+    thumbnailAlt: "",
     figmaEmbedCode: "",
     sections: [],
     status: "Draft",
@@ -875,7 +856,7 @@ function CaseStudiesManager({ projects, setProjects, onSaveProject, onDeleteProj
     publishedAt: null,
   });
   const filtered = projects.filter((project) => (filter === "All" || project.status === filter) && project.title.toLowerCase().includes(search.toLowerCase()));
-  if (editing) return <FigmaCaseStudyEditor project={editing} existing={projects.some((project) => project.id === editing.id)} onSave={saveProject} onCancel={() => setEditing(null)} onDelete={deleteProject} onUploadAsset={onUploadAsset} onDiscardAsset={onDiscardAsset} assetUrls={assetUrls} />;
+  if (editing) return <FigmaCaseStudyEditor project={editing} existing={projects.some((project) => project.id === editing.id)} onSave={saveProject} onCancel={() => setEditing(null)} onDelete={deleteProject} onUploadAsset={onUploadAsset} onDiscardAsset={onDiscardAsset} onDirtyChange={onDirtyChange} />;
   return (
     <div className="admin-page">
       <div className="admin-page-heading"><div><p className="eyebrow">YOUR PORTFOLIO, YOUR STORY</p><h1>Case studies</h1><p>Create, refine and publish the work you’re proud of.</p></div><button className="button-dark" onClick={createProject}>+ Add New Case Study</button></div>
@@ -884,7 +865,7 @@ function CaseStudiesManager({ projects, setProjects, onSaveProject, onDeleteProj
       <div className="project-table">
         <div className="table-head"><span>PROJECT</span><span>STATUS</span><span>HOMEPAGE</span><span>UPDATED</span><span>ACTIONS</span></div>
         {filtered.map((project) => <div className="table-row" key={project.id}>
-          <button className="table-project" onClick={() => setEditing(project)}><span className="table-thumb">{(project.thumbnail || project.thumbnailUrl || project.image) && <img src={assetPreview(project.thumbnail || project.thumbnailUrl || project.image, assetUrls)} alt="" />}</span><span><strong>{project.title}</strong><small>{project.description || project.category || "Figma case study"}</small></span></button>
+          <button className="table-project" onClick={() => setEditing(project)}><span className="table-thumb">{(project.thumbnailUrl || project.image) && <img src={assetPreview(project.thumbnailUrl || project.image)} alt={project.thumbnailAlt || ""} />}</span><span><strong>{project.title}</strong><small>{project.description || project.category || "Figma case study"}</small></span></button>
           <span><span className={`status-pill status-${project.status.toLowerCase()}`}>{project.status}</span></span>
           <span>{project.featured ? "Featured" : "—"}</span>
           <span>{project.updatedAt ? new Date(project.updatedAt).toLocaleDateString() : "—"}</span>
@@ -892,17 +873,34 @@ function CaseStudiesManager({ projects, setProjects, onSaveProject, onDeleteProj
         </div>)}
         {filtered.length === 0 && <p className="empty-note">No case studies match your search.</p>}
       </div>
-      <p className="storage-note">Changes are saved to this browser’s IndexedDB working copy. Export and push them to update the live site.</p>
+      <p className="storage-note">Saved changes are published directly to Supabase.</p>
     </div>
   );
 }
 
-function SiteContentEditor({ content, onSave }) {
+function SiteContentEditor({ content, onSave, onDirtyChange }) {
   const [form, setForm] = useState(content);
   const [saved, setSaved] = useState(false);
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const savedContent = useRef(JSON.stringify(content));
+  const hasUnsavedChanges = JSON.stringify(form) !== savedContent.current;
   useEffect(() => setForm(content), [content]);
+  useEffect(() => {
+    savedContent.current = JSON.stringify(content);
+  }, [content]);
+  useEffect(() => {
+    onDirtyChange(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onDirtyChange]);
+  useEffect(() => {
+    if (!hasUnsavedChanges) return undefined;
+    const warnBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [hasUnsavedChanges]);
   const update = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setSaved(false); };
   const save = async () => {
     setSaving(true);
@@ -910,6 +908,8 @@ function SiteContentEditor({ content, onSave }) {
     setSaved(false);
     try {
       await onSave(form);
+      savedContent.current = JSON.stringify(form);
+      onDirtyChange(false);
       setSaved(true);
     } catch (error) {
       setNotice(error.message || "Could not save your site content.");
@@ -920,414 +920,277 @@ function SiteContentEditor({ content, onSave }) {
   return <div className="admin-page content-editor-page"><div className="admin-page-heading"><div><p className="eyebrow">YOUR VOICE, YOUR DETAILS</p><h1>Site content</h1><p>Update your introduction and how people can reach you.</p></div><button className="button-dark" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save changes"} <Arrow /></button></div>{saved && <p className="inline-notice">Your site content has been saved.</p>}{notice && <p className="form-error" role="alert">{notice}</p>}<section className="editor-card content-form-card"><div className="editor-section-head"><span>01</span><div><h2>Introduction</h2><p>These details appear across your portfolio.</p></div></div><div className="field-grid"><label>Your name<input value={form.name} onChange={(event) => update("name", event.target.value)} /></label><label>Professional title<input value={form.title} onChange={(event) => update("title", event.target.value)} /></label><label className="field-span">Hero headline<textarea rows="2" value={form.headline} onChange={(event) => update("headline", event.target.value)} /></label><label className="field-span">Short introduction<textarea rows="3" value={form.intro} onChange={(event) => update("intro", event.target.value)} /></label><label className="field-span">About paragraph<textarea rows="4" value={form.about} onChange={(event) => update("about", event.target.value)} /></label></div></section><section className="editor-card content-form-card"><div className="editor-section-head"><span>02</span><div><h2>Contact & links</h2><p>Keep your public contact details current.</p></div></div><div className="field-grid"><label>Email<input type="email" value={form.email} onChange={(event) => update("email", event.target.value)} /></label><label>Phone<input value={form.phone} onChange={(event) => update("phone", event.target.value)} /></label><label>LinkedIn URL<input value={form.linkedin} onChange={(event) => update("linkedin", event.target.value)} /></label><label>GitHub URL<input value={form.github} onChange={(event) => update("github", event.target.value)} /></label><label>Behance URL<input value={form.behance} onChange={(event) => update("behance", event.target.value)} /></label><label>Location<input value={form.location} onChange={(event) => update("location", event.target.value)} /></label></div></section></div>;
 }
 
-function ResumeManager({ resumes, activeResumePath, onUpload, onSetActive, onDelete }) {
-  const [busy, setBusy] = useState(false);
+function SettingsManager({ settings: savedSettings, onSave, working, migrationReady, onMigrate, onClearLegacy, onDirtyChange }) {
+  const [featuredLimit, setFeaturedLimit] = useState(savedSettings.featuredLimit);
+  const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
-  const [uploadProgress, setUploadProgress] = useState(null);
-
-  const upload = async (event) => {
-    const files = Array.from(event.target.files || []);
-    event.target.value = "";
-    if (!files.length) return;
-    setBusy(true);
-    setNotice("");
+  const dirty = Number(featuredLimit) !== savedSettings.featuredLimit;
+  useEffect(() => setFeaturedLimit(savedSettings.featuredLimit), [savedSettings.featuredLimit]);
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  const save = async () => {
+    const value = Number(featuredLimit);
+    if (!Number.isInteger(value) || value < 1 || value > 12) return;
+    setSaving(true);
     try {
-      const result = await onUpload(files, (name, percentage) => setUploadProgress({ name, percentage }));
-      const messages = [];
-      if (result.uploaded.length) messages.push(`${result.uploaded.length} resume${result.uploaded.length === 1 ? "" : "s"} uploaded.`);
-      if (result.errors.length) messages.push(result.errors.join(" "));
-      setNotice(messages.join(" ") || "No resumes were uploaded.");
+      await onSave(value);
+      setNotice("");
     } catch (error) {
-      console.error("Could not upload resumes.", error);
-      setNotice("Resume upload failed. Please try again.");
+      setNotice(error.message || "Could not save portfolio settings.");
     } finally {
-      setBusy(false);
-      setUploadProgress(null);
+      setSaving(false);
     }
   };
-
-  const remove = async (resume) => {
-    if (!window.confirm(`Delete “${resume.name}”? This removes it from the working copy.`)) return;
-    try {
-      await onDelete(resume.id);
-      setNotice(`${resume.name} deleted.`);
-    } catch (error) {
-      console.error("Could not delete the resume.", error);
-      setNotice(`Could not delete “${resume.name}”. ${error.message}`);
-    }
-  };
-
-  const activate = async (resume) => {
-    try {
-      await onSetActive(resume.id);
-      setNotice(`${resume.name} is now selected for the website.`);
-    } catch (error) {
-      setNotice(`Could not activate “${resume.name}”. ${error.message}`);
-    }
-  };
-
   return (
-    <div className="admin-page resume-manager">
-      <div className="admin-page-heading">
-        <div><p className="eyebrow">YOUR EXPERIENCE, ALWAYS CURRENT</p><h1>Resumes</h1><p>Keep several versions here and choose which one visitors see on your About page.</p></div>
-        <label className={`button-dark resume-upload-button${busy ? " is-busy" : ""}`}>{busy ? "Uploading…" : "+ Upload Resumes"}<input type="file" accept="application/pdf,.pdf" multiple disabled={busy} onChange={upload} /></label>
-      </div>
-      {uploadProgress && <p className="upload-progress-label" role="status">Uploading {uploadProgress.name} · {uploadProgress.percentage}% <progress className="upload-progress" max="100" value={uploadProgress.percentage} /></p>}
-      {notice && <p className="inline-notice" role="status">{notice}<button type="button" onClick={() => setNotice("")}>×</button></p>}
-      <section className="resume-list-card">
-        <div className="resume-list-heading"><div><p className="eyebrow">SAVED FILES</p><h2>{resumes.length} resume{resumes.length === 1 ? "" : "s"}</h2></div><span className="resume-active-count">ONE ACTIVE ON YOUR SITE</span></div>
-        {resumes.length ? (
-          <div className="resume-list">
-            {resumes.map((resume) => {
-              const isActive = resume.path === activeResumePath;
-              return (
-                <article className={`resume-row${isActive ? " resume-row-active" : ""}`} key={resume.id}>
-                  <span className="resume-file-icon" aria-hidden="true">PDF</span>
-                  <div className="resume-file-details"><strong>{resume.name}</strong><span>{(Number(resume.size) / (1024 * 1024)).toFixed(2)} MB · Added {new Date(resume.uploadedAt).toLocaleDateString()}</span></div>
-                  {isActive ? <span className="resume-active-pill"><span />Active on website</span> : <button type="button" className="button-outline resume-action" onClick={() => activate(resume)}>Set active</button>}
-                  <button type="button" className="resume-delete" onClick={() => remove(resume)} aria-label={`Delete ${resume.name}`}>Delete</button>
-                </article>
-              );
-            })}
-          </div>
-        ) : <p className="resume-empty">No resumes uploaded yet. Upload one or more PDF files to get started.</p>}
-      </section>
-      <p className="storage-note">PDFs are kept in this browser’s IndexedDB working copy. Only the active resume is linked on your site after export and push.</p>
+    <div className="admin-page">
+      <div className="admin-page-heading"><div><p className="eyebrow">PORTFOLIO SETTINGS</p><h1>Settings</h1><p>Manage featured projects and migrate your saved browser content.</p></div></div>
+      {notice && <p className="form-error" role="alert">{notice}</p>}
+      <section className="editor-card"><div className="editor-section-head"><span>01</span><div><h2>Featured projects</h2><p>Choose how many published, featured projects appear on the homepage.</p></div></div><label className="field-span">Featured limit<input type="number" min="1" max="12" value={featuredLimit} onChange={(event) => setFeaturedLimit(event.target.value)} /></label><div className="editor-actions"><button className="button-dark" onClick={save} disabled={!dirty || saving}>{saving ? "Saving?" : "Save settings"} <Arrow /></button></div></section>
+      <section className="editor-card"><div className="editor-section-head"><span>02</span><div><h2>Migrate browser data</h2><p>Import the legacy prem-portfolio-v1 backup, including embedded thumbnail and story images.</p></div></div><p>The old browser data is never cleared automatically. After the import is saved and verified, a separate clear button will be available.</p><div className="editor-actions"><button className="button-outline" onClick={onMigrate} disabled={working}>{working ? "Migrating?" : "Migrate browser data"}</button>{migrationReady && <button className="button-outline delete-case-study" onClick={onClearLegacy} disabled={working}>Clear old browser data</button>}</div></section>
     </div>
   );
 }
 
-function AdminPage({ state, setState, navigate }) {
+function AdminPage({ navigate }) {
   const [section, setSection] = useState("overview");
-  const [authenticated, setAuthenticated] = useState(false);
+  const [session, setSession] = useState(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [data, setData] = useState(null);
+  const [dataLoading, setDataLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("");
   const [working, setWorking] = useState(false);
-  const [exported, setExported] = useState(false);
-  const dirty = JSON.stringify({ ...state, assetUrls: undefined, exportFingerprint: undefined }) !== (state.exportFingerprint || JSON.stringify(publishedData));
-  const assetUrls = state.assetUrls || {};
+  const [migrationReady, setMigrationReady] = useState(false);
+  const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false);
+  const handleDirtyChange = React.useCallback((dirty) => setHasUnsavedEdits(dirty), []);
+  const dirtyRef = useRef(false);
+  dirtyRef.current = hasUnsavedEdits;
 
-  const login = async (passcode) => {
-    if (!adminPasscodeHash) throw new Error("No passcode has been configured. Run npm run set-passcode in the project terminal first.");
-    if (await sha256(passcode) !== adminPasscodeHash) throw new Error("That passcode is not correct.");
-    setAuthError("");
-    setAuthenticated(true);
-  };
-
-  const updateState = (updater) => setState((current) => typeof updater === "function" ? updater(current) : updater);
-  const usedAssetPaths = (project) => [project.thumbnail || project.thumbnailUrl || project.image, ...(project.sections || []).map((item) => item.image)].filter((value) => value && /^(thumbnails|case-images)\//.test(value.replace(/^\//, ""))).map((value) => value.replace(/^\//, ""));
-  const uploadAsset = async (file, onProgress, folder = "thumbnails", title = "case-study") => {
-    if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("Choose a JPG, PNG, or WebP image.");
-    if (file.size > MAX_IMAGE_SIZE) throw new Error("Choose an image smaller than 20 MB.");
-    onProgress?.(10);
-    const blob = await resizeImage(file);
-    const stem = slugify(title) || "case-study";
-    const path = `${folder}/${stem}-${crypto.randomUUID()}.webp`;
-    await saveAsset(path, blob);
-    const previewUrl = URL.createObjectURL(blob);
-    onProgress?.(100);
-    updateState((current) => ({ ...current, assetUrls: { ...(current.assetUrls || {}), [path]: previewUrl } }));
-    return { path, previewUrl };
-  };
-  const discardAsset = async (path) => {
-    if (!path) return;
-    await deleteAsset(path);
-    const previewUrl = assetUrls[path];
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    updateState((current) => {
-      const nextUrls = { ...(current.assetUrls || {}) };
-      delete nextUrls[path];
-      return { ...current, assetUrls: nextUrls };
+  useEffect(() => {
+    if (supabaseConfigError) {
+      setAuthError(supabaseConfigError);
+      setSessionLoading(false);
+      return undefined;
+    }
+    let active = true;
+    const { data: { subscription } } = onAuthStateChange((nextSession) => {
+      if (!active) return;
+      setSession(nextSession);
+      setSessionLoading(false);
+      setAuthError("");
     });
+    getSession().then((currentSession) => {
+      if (active) setSession(currentSession);
+    }).catch((error) => {
+      if (active) setAuthError(error.message);
+    }).finally(() => {
+      if (active) setSessionLoading(false);
+    });
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasUnsavedEdits) return undefined;
+    const warnBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [hasUnsavedEdits]);
+  useEffect(() => {
+    const guardBrowserNavigation = (event) => {
+      if (dirtyRef.current && !window.confirm("You have unsaved edits. Discard them and continue?")) {
+        event.preventDefault();
+        return;
+      }
+      setHasUnsavedEdits(false);
+    };
+    window.addEventListener("portfolio:navigate", guardBrowserNavigation);
+    return () => window.removeEventListener("portfolio:navigate", guardBrowserNavigation);
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setData(null);
+      return undefined;
+    }
+    let active = true;
+    setDataLoading(true);
+    loadAdminData().then((loaded) => {
+      if (active) {
+        setData(loaded);
+        setNotice("");
+      }
+    }).catch((error) => {
+      if (active) setNotice(`Could not load the CMS: ${error.message}`);
+    }).finally(() => {
+      if (active) setDataLoading(false);
+    });
+    return () => { active = false; };
+  }, [session?.user?.id]);
+
+  const confirmDiscard = () => !dirtyRef.current || window.confirm("You have unsaved edits. Discard them and continue?");
+  const safeNavigate = (to) => {
+    if (!confirmDiscard()) return;
+    setHasUnsavedEdits(false);
+    navigate(to);
+  };
+  const safeSetSection = (nextSection) => {
+    if (nextSection === section || !confirmDiscard()) return;
+    setHasUnsavedEdits(false);
+    setSection(nextSection);
+  };
+  const login = async (email, password) => {
+    setAuthError("");
+    try {
+      await signIn(email, password);
+    } catch (error) {
+      setAuthError(error.message);
+      throw error;
+    }
+  };
+  const logout = async () => {
+    if (!confirmDiscard()) return;
+    try {
+      await signOut();
+      setHasUnsavedEdits(false);
+    } catch (error) {
+      setNotice(`Could not sign out: ${error.message}`);
+    }
   };
 
-  const saveProject = async (project) => {
-    const previous = state.projects.find((item) => item.id === project.id);
-    updateState((current) => ({
+  const mediaPaths = (project) => [project.thumbnailPath, ...(project.sections || []).map((item) => item.imagePath)].filter(Boolean);
+  const saveProject = async (project, pendingMedia = []) => {
+    const previous = data.projects.find((item) => item.id === project.id);
+    const saved = await saveCaseStudy(project, previous?.revision ?? null);
+    setData((current) => ({
       ...current,
-      projects: current.projects.some((item) => item.id === project.id)
-        ? current.projects.map((item) => item.id === project.id ? project : item)
-        : [project, ...current.projects],
+      projects: current.projects.some((item) => item.id === saved.id)
+        ? current.projects.map((item) => item.id === saved.id ? saved : item)
+        : [saved, ...current.projects],
     }));
-    const retained = new Set(usedAssetPaths(project));
-    const referencedElsewhere = new Set(state.projects.filter((item) => item.id !== project.id).flatMap(usedAssetPaths));
-    for (const path of usedAssetPaths(previous || {}).filter((assetPath) => !retained.has(assetPath) && !referencedElsewhere.has(assetPath))) await discardAsset(path);
-    return project;
-  };
-  const deleteProject = async (id) => {
-    const target = state.projects.find((project) => project.id === id);
-    updateState((current) => ({ ...current, projects: current.projects.filter((project) => project.id !== id) }));
-    const otherPaths = new Set(state.projects.filter((project) => project.id !== id).flatMap(usedAssetPaths));
-    for (const path of usedAssetPaths(target || {}).filter((assetPath) => !otherPaths.has(assetPath))) await discardAsset(path);
-  };
-  const changeProjectStatus = async (id, published) => {
-    let saved;
-    updateState((current) => ({
-      ...current,
-      projects: current.projects.map((project) => {
-        if (project.id !== id) return project;
-        saved = { ...project, status: published ? "Published" : "Draft", publishedAt: published ? (project.publishedAt || new Date().toISOString()) : null, updatedAt: new Date().toISOString() };
-        return saved;
-      }),
-    }));
+    const retainedPaths = new Set(mediaPaths(saved));
+    const referencedElsewhere = new Set(data.projects.filter((item) => item.id !== project.id).flatMap(mediaPaths));
+    const removedPaths = [
+      ...mediaPaths(previous || {}).filter((path) => !retainedPaths.has(path)),
+      ...pendingMedia.map((media) => media.path).filter((path) => !retainedPaths.has(path)),
+    ].filter((path) => !referencedElsewhere.has(path));
+    if (removedPaths.length) {
+      try {
+        await deleteMedia(removedPaths);
+      } catch (error) {
+        setNotice(`Case study saved, but an old image could not be removed: ${error.message}`);
+      }
+    }
     return saved;
   };
-
-  const uploadResumes = async (files, onProgress) => {
-    const uploaded = [];
-    const errors = [];
-    for (const file of files) {
-      if (file.type !== "application/pdf" || !file.name.toLowerCase().endsWith(".pdf")) {
-        errors.push(`${file.name}: choose a PDF file.`);
-        continue;
-      }
-      if (file.size > MAX_PDF_SIZE) {
-        errors.push(`${file.name}: PDF files must be 10 MB or smaller.`);
-        continue;
-      }
-      const stem = slugify(file.name.replace(/\.pdf$/i, "")) || "resume";
-      const path = `resumes/${stem}-${crypto.randomUUID()}.pdf`;
-      try {
-        onProgress?.(file.name, 10);
-        await saveAsset(path, file);
-        const resume = { id: crypto.randomUUID(), name: file.name, path: `/${path}`, size: file.size, uploadedAt: new Date().toISOString() };
-        uploaded.push(resume);
-        const previewUrl = URL.createObjectURL(file);
-        updateState((current) => ({
-          ...current,
-          resumes: [...(current.resumes || []), resume],
-          activeResumePath: current.activeResumePath || resume.path,
-          assetUrls: { ...(current.assetUrls || {}), [path]: previewUrl },
-        }));
-        onProgress?.(file.name, 100);
-      } catch (error) {
-        errors.push(`${file.name}: ${error.message}`);
-      }
-    }
-    return { uploaded, errors };
-  };
-  const setActiveResume = async (id) => {
-    const resume = state.resumes.find((item) => item.id === id);
-    if (resume) updateState((current) => ({ ...current, activeResumePath: resume.path }));
-  };
-  const deleteResume = async (id) => {
-    const resume = state.resumes.find((item) => item.id === id);
-    if (!resume) return;
-    const remaining = state.resumes.filter((item) => item.id !== id);
-    updateState((current) => ({ ...current, resumes: remaining, activeResumePath: current.activeResumePath === resume.path ? (remaining[0]?.path || "") : current.activeResumePath }));
-    if (!resume.isDefault) await discardAsset(resume.path.replace(/^\//, ""));
-  };
-  const saveContent = async (content) => updateState((current) => ({ ...current, content }));
-
-  const importLegacy = async () => {
-    setWorking(true);
-    setNotice("Reading the existing browser backup?");
+  const removeProject = async (project) => {
+    await deleteCaseStudy(project);
+    setData((current) => ({ ...current, projects: current.projects.filter((item) => item.id !== project.id) }));
+    const referencedElsewhere = new Set(data.projects.filter((item) => item.id !== project.id).flatMap(mediaPaths));
     try {
-      const legacy = readLegacyState();
-      const legacyFiles = await readLegacyResumeFiles();
-      if (!legacy && !legacyFiles.some((entry) => entry.file)) throw new Error("No saved browser CMS data or resume files were found.");
-      const migrated = {
-        ...state,
-        content: { ...state.content, ...(legacy?.content || {}) },
-        projects: Array.isArray(legacy?.projects) ? legacy.projects.map((project, index) => ({
-          ...project,
-          id: project.id || crypto.randomUUID(),
-          slug: slugify(project.slug || project.title || `case-study-${index + 1}`),
-          thumbnail: project.thumbnail || project.thumbnailUrl || project.image || "",
-          figmaEmbedUrl: extractFigmaEmbedUrl(project.figmaEmbedUrl || project.figmaEmbedCode || ""),
-          status: project.status === "Published" || project.status === "published" ? "Published" : "Draft",
-          sections: (project.sections || []).map((item) => ({ ...item, image: item.image || "" })),
-        })) : state.projects,
-        resumes: [...(state.resumes || [])],
-        assetUrls: { ...(state.assetUrls || {}) },
-      };
-      const importImage = async (value, path) => {
-        const blob = await imageBlobFromValue(value);
-        if (!blob) return value;
-        const optimized = await resizeImage(new File([blob], `${slugify(path)}.webp`, { type: blob.type || "image/jpeg" }));
-        const assetPath = `${path}-${crypto.randomUUID()}.webp`;
-        await saveAsset(assetPath, optimized);
-        migrated.assetUrls[assetPath] = URL.createObjectURL(optimized);
-        return `/${assetPath}`;
-      };
-      for (const [index, project] of migrated.projects.entries()) {
-        const thumb = project.thumbnail || project.thumbnailUrl || project.image || "";
-        project.thumbnail = thumb ? await importImage(thumb, `thumbnails/${slugify(project.slug || `case-study-${index + 1}`)}`) : "";
-        project.thumbnailUrl = project.thumbnail;
-        for (const [sectionIndex, item] of project.sections.entries()) {
-          if (item.image) item.image = await importImage(item.image, `case-images/${slugify(project.slug)}-${sectionIndex + 1}`);
-        }
-      }
-      const legacyFileById = new Map(legacyFiles.map((entry) => [entry.id, entry.file]));
-      for (const oldResume of legacy?.resumes || []) {
-        const file = legacyFileById.get(oldResume.id);
-        if (!file) throw new Error(`The old resume ?${oldResume.name || oldResume.originalFilename}? is not available in the browser file backup.`);
-        if (file.size > MAX_PDF_SIZE) throw new Error(`The old resume ?${oldResume.name || oldResume.originalFilename}? is larger than 10 MB.`);
-        const name = oldResume.name || oldResume.originalFilename || "resume.pdf";
-        const path = `resumes/${slugify(name.replace(/\.pdf$/i, ""))}-${crypto.randomUUID()}.pdf`;
-        await saveAsset(path, file);
-        const resume = { id: crypto.randomUUID(), name, path: `/${path}`, size: file.size, uploadedAt: new Date().toISOString() };
-        migrated.resumes.push(resume);
-        migrated.assetUrls[path] = URL.createObjectURL(file);
-        if (!migrated.activeResumePath || oldResume.id === legacy.activeResumeId) migrated.activeResumePath = resume.path;
-      }
-      if (Number.isFinite(legacy?.featuredLimit)) migrated.featuredLimit = legacy.featuredLimit;
-      updateState(migrated);
-      await saveWorkingCopy({ ...migrated, assetUrls: undefined });
-      setNotice("Browser data imported into this working copy. The old localStorage and IndexedDB data has not been changed.");
+      await deleteMedia(mediaPaths(project).filter((path) => !referencedElsewhere.has(path)));
     } catch (error) {
-      setNotice(`Import did not complete: ${error.message}`);
+      setNotice(`Case study deleted, but an image could not be removed: ${error.message}`);
+    }
+  };
+  const changeProjectStatus = async (id, published) => {
+    const project = data.projects.find((item) => item.id === id);
+    if (!project) throw new Error("This case study is no longer available. Reload before saving.");
+    const saved = await updateCaseStudyStatus(project, published);
+    setData((current) => ({ ...current, projects: current.projects.map((item) => item.id === id ? saved : item) }));
+    return saved;
+  };
+  const saveContent = async (content) => {
+    const updated = await saveSiteContent(content, data.contentRevision);
+    setData((current) => ({ ...current, content: updated.content, contentRevision: updated.revision }));
+  };
+  const saveSettings = async (featuredLimit) => {
+    const updated = await saveFeaturedLimit(featuredLimit, data.settings.revision);
+    setData((current) => ({ ...current, settings: updated }));
+    setNotice("Settings saved.");
+  };
+  const migrate = async () => {
+    setWorking(true);
+    setNotice("Migrating the saved browser content to Supabase...");
+    try {
+      const verified = await migrateLegacyData(readLegacyState(), data);
+      setData(verified);
+      setMigrationReady(true);
+      setNotice("Browser content was saved and verified. The old browser backup is still available until you clear it.");
+    } catch (error) {
+      setNotice(`Migration did not complete: ${error.message}`);
     } finally {
       setWorking(false);
     }
   };
-
-  const normalizeExportPath = (value) => {
-    if (!value) return "";
-    const trimmed = value.replace(/^\/+/, "");
-    if (trimmed === "Prem-Kumar-Resume.pdf") return "resumes/Prem-Kumar-Resume.pdf";
-    if (!/^(thumbnails|case-images|resumes)\/[a-zA-Z0-9._-]+$/.test(trimmed)) throw new Error(`Unsupported asset path: ${value}`);
-    return trimmed;
-  };
-  const exportForGitHub = async () => {
-    setWorking(true);
-    setNotice("Building your GitHub export?");
+  const clearLegacyData = () => {
+    if (!migrationReady || !window.confirm("Clear the old prem-portfolio-v1 browser data? This cannot be undone.")) return;
     try {
-      const zip = new JSZip();
-      const projects = state.projects.map((project) => {
-        const { thumbnailUrl, image, thumbnailPublicId, figmaEmbedCode, slugEdited, showPreviewOnOpen, ...clean } = project;
-        const thumbnail = normalizeExportPath(project.thumbnail || thumbnailUrl || image || "");
-        return { ...clean, thumbnail: thumbnail ? `/${thumbnail}` : "", sections: (project.sections || []).map(({ imagePublicId, imagePreviewUrl, ...item }) => ({ ...item, image: item.image ? `/${normalizeExportPath(item.image)}` : "" })) };
-      });
-      const exportedResumePath = (path) => path === "/Prem-Kumar-Resume.pdf" ? path : `/${normalizeExportPath(path)}`;
-      const resumes = (state.resumes || []).map((resume) => ({ ...resume, path: exportedResumePath(resume.path) }));
-      const activeResumePath = state.activeResumePath ? exportedResumePath(state.activeResumePath) : "";
-      const exportedSettings = { featuredLimit: state.featuredLimit, activeResumePath, resumes };
-      zip.file("src/data/caseStudies.js", `export const caseStudies = ${JSON.stringify(projects, null, 2)};\n`);
-      zip.file("src/data/siteContent.js", `export const siteContent = ${JSON.stringify(state.content, null, 2)};\n`);
-      zip.file("src/data/settings.js", `export const settings = ${JSON.stringify(exportedSettings, null, 2)};\n`);
-      const pathToSource = new Map();
-      for (const project of state.projects) {
-        for (const assetPath of usedAssetPaths(project)) pathToSource.set(assetPath, assetPath);
-      }
-      for (const resume of state.resumes || []) pathToSource.set(normalizeExportPath(resume.path), resume.path.replace(/^\//, ""));
-      const storedAssets = new Map((await loadAssets()).map((asset) => [asset.path, asset.blob]));
-      for (const [outputPath, sourcePath] of pathToSource) {
-        let blob = storedAssets.get(sourcePath) || storedAssets.get(outputPath);
-        if (!blob) {
-          const fetchPath = sourcePath === "Prem-Kumar-Resume.pdf" ? "/Prem-Kumar-Resume.pdf" : `/${sourcePath}`;
-          const response = await fetch(fetchPath);
-          if (!response.ok) throw new Error(`Could not include ${fetchPath} in the ZIP export.`);
-          blob = await response.blob();
-        }
-        zip.file(`public/${outputPath}`, blob);
-      }
-      if (state.activeResumePath && !pathToSource.has(normalizeExportPath(state.activeResumePath))) {
-        const outputPath = normalizeExportPath(state.activeResumePath);
-        const response = await fetch(state.activeResumePath);
-        if (!response.ok) throw new Error(`Could not include ${state.activeResumePath} in the ZIP export.`);
-        zip.file(`public/${outputPath}`, await response.blob());
-      }
-      const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `portfolio-export-${new Date().toISOString().slice(0, 10)}.zip`;
-      anchor.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      const fingerprint = JSON.stringify({ ...state, assetUrls: undefined, exportFingerprint: undefined });
-      updateState((current) => ({ ...current, exportFingerprint: fingerprint }));
-      setExported(true);
-      setNotice("Export downloaded successfully. Copy the files into your project, then git add, commit and push to publish on Vercel.");
-    } catch (error) {
-      setNotice(`Export failed: ${error.message}`);
-    } finally {
-      setWorking(false);
-    }
-  };
-  const reset = async () => {
-    if (!window.confirm("Discard this browser working copy and reset to the checked-in published data?")) return;
-    setWorking(true);
-    try {
-      Object.values(assetUrls).forEach((url) => URL.revokeObjectURL(url));
-      const fresh = await resetWorkingCopy();
-      updateState(fresh);
-      setExported(false);
-      setNotice("Working copy reset to the published source files.");
-    } catch (error) {
-      setNotice(`Could not reset the working copy: ${error.message}`);
-    } finally {
-      setWorking(false);
-    }
-  };
-  const clearLegacyData = async () => {
-    if (!exported) return;
-    if (!window.confirm("An export has completed. Permanently clear the old localStorage and resume IndexedDB backup from this browser?")) return;
-    try {
-      await new Promise((resolve, reject) => {
-        const request = indexedDB.deleteDatabase(FILE_DB_NAME);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error || new Error("Could not clear the old resume backup."));
-        request.onblocked = () => reject(new Error("Close other portfolio tabs before clearing the old resume backup."));
-      });
       window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-      window.localStorage.removeItem("prem-portfolio-admin-pin");
-      setNotice("Old browser data cleared after export.");
+      setMigrationReady(false);
+      setNotice("Old browser data cleared.");
     } catch (error) {
       setNotice(`Could not clear old browser data: ${error.message}`);
     }
   };
 
-  if (!authenticated) return <AdminLogin error={authError} onLogin={async (passcode) => {
-    try { await login(passcode); } catch (error) { setAuthError(error.message); throw error; }
-  }} />;
+  if (sessionLoading) return <main className="admin-login"><p className="eyebrow">CHECKING ADMIN SESSION...</p></main>;
+  if (!session) return <AdminLogin error={authError || supabaseConfigError} onLogin={login} />;
+  if (dataLoading) return <main className="admin-login"><p className="eyebrow">LOADING SUPABASE CMS...</p></main>;
+  if (!data) return <main className="admin-login"><div className="login-card"><p className="eyebrow">CMS UNAVAILABLE</p><p className="form-error" role="alert">{notice || "Could not load the CMS data."}</p><button className="button-outline" onClick={() => window.location.reload()}>Reload CMS</button></div></main>;
 
   return (
-    <AdminShell section={section} setSection={setSection} navigate={navigate} dirty={dirty} onLogout={() => setAuthenticated(false)}>
-      {notice && <p className="inline-notice" role="status">{notice}</p>}
-      {section === "overview" ? <Dashboard projects={state.projects} setSection={setSection} /> :
-        section === "projects" ? <CaseStudiesManager projects={state.projects} setProjects={(updater) => updateState((current) => ({ ...current, projects: typeof updater === "function" ? updater(current.projects) : updater }))} onSaveProject={saveProject} onDeleteProject={deleteProject} onChangeStatus={changeProjectStatus} onUploadAsset={uploadAsset} onDiscardAsset={discardAsset} assetUrls={assetUrls} /> :
-          section === "resumes" ? <ResumeManager resumes={state.resumes || []} activeResumePath={state.activeResumePath} onUpload={uploadResumes} onSetActive={setActiveResume} onDelete={deleteResume} /> :
-            section === "content" ? <SiteContentEditor content={state.content} onSave={saveContent} /> :
-              <div className="admin-page"><div className="admin-page-heading"><div><p className="eyebrow">PUBLISH FROM YOUR REPOSITORY</p><h1>Export & settings</h1><p>CMS edits stay in this browser until you export and push the files to GitHub.</p></div><button className="button-dark" onClick={exportForGitHub} disabled={working}>{working ? "Preparing?" : "Export for GitHub"} <Arrow /></button></div>
-                <section className="editor-card"><div className="editor-section-head"><span>01</span><div><h2>Featured projects</h2><p>Choose the maximum number of featured projects shown on the homepage.</p></div></div><label className="field-span">Featured limit<input type="number" min="0" max="20" value={state.featuredLimit} onChange={(event) => updateState((current) => ({ ...current, featuredLimit: Math.max(0, Math.min(20, Number(event.target.value) || 0)) }))} /></label></section>
-                <section className="editor-card"><div className="editor-section-head"><span>02</span><div><h2>Publishing workflow</h2><p>Export creates only the updated data modules and referenced files under public/thumbnails, public/case-images and public/resumes.</p></div></div><p>After downloading, copy the files into this project, then run <code>git add</code>, <code>git commit</code> and <code>git push</code>. Vercel redeploys from the updated source.</p><div className="editor-actions"><button className="button-outline" onClick={importLegacy} disabled={working}>{working ? "Importing?" : "Migrate browser data"}</button><button className="button-outline" onClick={reset} disabled={working}>Reset to published data</button>{exported && <button className="button-outline delete-case-study" onClick={clearLegacyData}>Clear old data</button>}</div></section>
-                <p className="storage-note">{dirty ? "Unsaved changes since the last export." : "No unsaved changes since the last export."} The passcode is a soft gate; publishing requires a Git push.</p>
-              </div>}
+    <AdminShell section={section} setSection={safeSetSection} navigate={safeNavigate} dirty={hasUnsavedEdits} onLogout={logout}>
+      {notice && <p className="inline-notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></p>}
+      {section === "overview" ? <Dashboard projects={data.projects} setSection={safeSetSection} /> :
+        section === "projects" ? <CaseStudiesManager projects={data.projects} setProjects={(updater) => setData((current) => ({ ...current, projects: typeof updater === "function" ? updater(current.projects) : updater }))} onSaveProject={saveProject} onDeleteProject={removeProject} onChangeStatus={changeProjectStatus} onUploadAsset={(file, folder) => uploadMedia(file, folder)} onDiscardAsset={(path) => deleteMedia([path])} onDirtyChange={handleDirtyChange} /> :
+          section === "content" ? <SiteContentEditor content={data.content} onSave={saveContent} onDirtyChange={handleDirtyChange} /> :
+            <SettingsManager settings={data.settings} onSave={saveSettings} working={working} migrationReady={migrationReady} onMigrate={migrate} onClearLegacy={clearLegacyData} onDirtyChange={handleDirtyChange} />}
     </AdminShell>
   );
 }
 
 export default function App() {
   const [path, navigate] = useLocation();
-  const [state, setStateInternal] = useState(defaultState);
-  const [storageError, setStorageError] = useState("");
-  const assetUrlsRef = useRef({});
   const isAdminRoute = path === "/admin" || path === "/admin/";
-  const setState = (updater) => setStateInternal((current) => {
-    const next = typeof updater === "function" ? updater(current) : updater;
-    saveWorkingCopy({ ...next, assetUrls: undefined }).catch((error) => setStorageError(error.message));
-    return next;
+  const [publicData, setPublicData] = useState({
+    content: siteContent,
+    projects: caseStudies.filter((project) => project.status === "Published"),
+    settings: { featuredLimit: settings.featuredLimit },
   });
+  const [publicLoading, setPublicLoading] = useState(!isAdminRoute);
+  const [publicLoadError, setPublicLoadError] = useState("");
   useEffect(() => {
-    if (!isAdminRoute) {
-      setStateInternal(defaultState);
-      return undefined;
-    }
+    if (isAdminRoute) return undefined;
     let active = true;
-    Promise.all([loadWorkingCopy(), loadAssets()]).then(([saved, assets]) => {
-      if (!active) return;
-      const assetUrls = Object.fromEntries(assets.map(({ path: assetPath, blob }) => [assetPath, URL.createObjectURL(blob)]));
-      setStateInternal({ ...publishedData, ...saved, assetUrls });
-    }).catch((error) => setStorageError(error.message));
-    return () => {
-      active = false;
-      Object.values(assetUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
-      assetUrlsRef.current = {};
-    };
+    setPublicLoading(true);
+    loadPublicData().then((loaded) => {
+      if (active) {
+        setPublicData({
+          content: loaded.content || siteContent,
+          projects: loaded.projects,
+          settings: loaded.settings,
+        });
+        setPublicLoadError("");
+      }
+    }).catch((error) => {
+      if (active) {
+        setPublicData({
+          content: siteContent,
+          projects: caseStudies.filter((project) => project.status === "Published"),
+          settings: { featuredLimit: settings.featuredLimit },
+        });
+        setPublicLoadError(error.message);
+      }
+    }).finally(() => {
+      if (active) setPublicLoading(false);
+    });
+    return () => { active = false; };
   }, [isAdminRoute]);
-  useEffect(() => { assetUrlsRef.current = state.assetUrls || {}; }, [state.assetUrls]);
-  useEffect(() => () => Object.values(assetUrlsRef.current).forEach((url) => URL.revokeObjectURL(url)), []);
   useEffect(() => {
     const home = document.querySelector(".home-page");
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1360,21 +1223,23 @@ export default function App() {
     updateParallax();
     return () => { window.removeEventListener("scroll", updateParallax); cancelAnimationFrame(frame); title.style.removeProperty("transform"); portrait.style.removeProperty("transform"); };
   }, [path]);
-  const displayedState = isAdminRoute ? state : publishedData;
-  const projects = useMemo(() => displayedState.projects.map((project) => {
-    const thumbnail = project.thumbnail || project.thumbnailUrl || project.image || "";
-    return { ...project, thumbnailUrl: assetPreview(thumbnail, displayedState.assetUrls), sections: (project.sections || []).map((item) => ({ ...item, image: assetPreview(item.image, displayedState.assetUrls) })) };
-  }), [displayedState.projects, displayedState.assetUrls]);
-  const resumeUrl = assetPreview(displayedState.activeResumePath || settings.activeResumePath, displayedState.assetUrls);
+  const projects = useMemo(() => publicData.projects.map((project) => ({
+    ...project,
+    thumbnailUrl: assetPreview(project.thumbnailUrl || project.image),
+    sections: (project.sections || []).map((item) => ({ ...item, image: assetPreview(item.image) })),
+  })), [publicData.projects]);
+  const resumeUrl = "/Prem-Kumar-Resume.pdf";
+  if (isAdminRoute) return <AdminPage navigate={navigate} />;
+  if (publicLoading) return <main className="page-main section-shell"><p className="eyebrow">LOADING PORTFOLIO…</p></main>;
+  const content = publicData.content || siteContent;
   let page;
-  if (path === "/work") page = <WorkPage content={displayedState.content} projects={projects} navigate={navigate} resumeUrl={resumeUrl} />;
-  else if (path === "/about") page = <AboutPage content={displayedState.content} navigate={navigate} resumeUrl={resumeUrl} />;
-  else if (path === "/contact") page = <ContactPage content={displayedState.content} navigate={navigate} />;
+  if (path === "/work") page = <WorkPage content={content} projects={projects} navigate={navigate} resumeUrl={resumeUrl} />;
+  else if (path === "/about") page = <AboutPage content={content} navigate={navigate} resumeUrl={resumeUrl} />;
+  else if (path === "/contact") page = <ContactPage content={content} navigate={navigate} />;
   if (path.startsWith("/work/")) {
     const slug = decodeURIComponent(path.slice("/work/".length));
-    page = <ProjectPage project={projects.find((project) => project.slug === slug && project.status === "Published")} projects={projects} content={displayedState.content} navigate={navigate} />;
+    page = <ProjectPage project={projects.find((project) => project.slug === slug && project.status === "Published")} projects={projects} content={content} navigate={navigate} />;
   }
-  if (!page) page = <HomePage content={displayedState.content} projects={projects} navigate={navigate} resumeUrl={resumeUrl} featuredLimit={displayedState.featuredLimit} />;
-  if (path === "/admin" || path === "/admin/") return <>{storageError && <p className="inline-notice" role="alert">Could not save your working copy: {storageError}</p>}<AdminPage state={state} setState={setState} navigate={navigate} /></>;
-  return <>{storageError && <p className="inline-notice" role="alert">Could not load the local CMS working copy: {storageError}</p>}{page}</>;
+  if (!page) page = <HomePage content={content} projects={projects} navigate={navigate} resumeUrl={resumeUrl} featuredLimit={publicData.settings.featuredLimit} />;
+  return <>{publicLoadError && <p className="inline-notice" role="status">Live portfolio data could not be reached. Showing the bundled version. {publicLoadError}</p>}{page}</>;
 }
