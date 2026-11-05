@@ -418,39 +418,39 @@ function FigmaEmbed({ src, title }) {
 
 function ProjectPage({ project, projects, content, navigate }) {
   if (!project || project.status !== "Published") {
-    return <><Header navigate={navigate} /><main className="not-found"><p className="eyebrow">NOT FOUND</p><h1>This project isn’t here.</h1><button className="text-link" onClick={() => navigate("/work")}>Back to work <Arrow /></button><FloatingTools variant="notfound" /></main><Footer content={content} navigate={navigate} /></>;
+    return <div className="case-page"><Header navigate={navigate} /><main className="not-found"><p className="eyebrow">NOT FOUND</p><h1>This project isn’t here.</h1><button className="text-link" onClick={() => navigate("/work")}>Back to work <Arrow /></button><FloatingTools variant="notfound" /></main><Footer content={content} navigate={navigate} /></div>;
   }
   const related = projects.filter((item) => item.status === "Published" && item.id !== project.id).slice(0, 2);
   const figmaEmbedUrl = extractFigmaEmbedUrl(project.figmaEmbedUrl || "");
   return (
-    <>
+    <div className="case-page">
       <Header navigate={navigate} active="work" />
       <main className="case-study section-shell">
-        <button className="back-link" onClick={() => navigate("/work")}>← All work</button>
-        <div className="case-heading">
+        <button className="back-link" data-reveal onClick={() => navigate("/work")}>← All work</button>
+        <div className="case-heading" data-reveal>
           <div><p className="eyebrow">{[project.category, project.year].filter(Boolean).join(" · ") || "CASE STUDY"}</p><h1>{project.title}</h1><p className="case-description">{project.description}</p></div>
           {(project.role || project.tools || project.duration) && <dl><div><dt>ROLE</dt><dd>{project.role || "—"}</dd></div><div><dt>TOOLS</dt><dd>{project.tools || "—"}</dd></div><div><dt>DURATION</dt><dd>{project.duration || "—"}</dd></div></dl>}
         </div>
-        <FloatingTools variant="case" />
-        {(!figmaEmbedUrl || project.thumbnailUrl || project.image) && <div className="case-cover">
+        <div data-reveal><FloatingTools variant="case" /></div>
+        {!figmaEmbedUrl && <div className="case-cover" data-reveal>
           {(project.thumbnailUrl || project.image) ? <img src={project.thumbnailUrl || project.image} alt={project.thumbnailAlt || `${project.title} cover`} /> : <div className="project-art art-0"><span className="art-title">{project.title}</span><span className="art-orbit" /></div>}
         </div>}
         {figmaEmbedUrl && <>
-          <FigmaEmbed src={figmaEmbedUrl} title={project.title} />
-          <a className="figma-open-link" href={figmaEmbedUrl} target="_blank" rel="noreferrer">Open in Figma <Arrow diagonal /></a>
+          <div data-reveal><FigmaEmbed src={figmaEmbedUrl} title={project.title} /></div>
+          <a className="figma-open-link" data-reveal href={figmaEmbedUrl} target="_blank" rel="noreferrer">Open in Figma <Arrow diagonal /></a>
         </>}
         {project.sections?.length > 0 && <div className="case-content">
           {project.sections.map((section, index) => (
-            <section className="case-block" key={`${section.title}-${index}`}>
+            <section className="case-block" data-reveal key={`${section.title}-${index}`}>
               <span className="case-number">0{index + 1}</span>
               <div><h2>{section.title}</h2><p>{section.body}</p>{section.image && <img className="section-image" src={section.image} alt={section.imageAlt || section.title} />}</div>
             </section>
           ))}
         </div>}
-        {related.length > 0 && <div className="related-work"><p className="eyebrow">KEEP EXPLORING</p><h2>More selected work</h2><div className="project-grid">{related.map((item, index) => <ProjectCard key={item.id} project={item} index={index} onClick={() => navigate(`/work/${item.slug}`)} />)}</div></div>}
+        {related.length > 0 && <div className="related-work" data-reveal><p className="eyebrow">KEEP EXPLORING</p><h2>More selected work</h2><div className="project-grid">{related.map((item, index) => <ProjectCard key={item.id} project={item} index={index} onClick={() => navigate(`/work/${item.slug}`)} />)}</div></div>}
       </main>
       <Footer content={content} navigate={navigate} />
-    </>
+    </div>
   );
 }
 
@@ -1226,10 +1226,10 @@ export default function App() {
     return () => { active = false; };
   }, [isAdminRoute]);
   useEffect(() => {
-    const home = document.querySelector(".home-page");
+    const revealPage = document.querySelector(".home-page, .case-page");
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!home || reducedMotion || !("IntersectionObserver" in window)) return undefined;
-    const revealItems = document.querySelectorAll(".home-page [data-reveal], .site-footer [data-reveal]");
+    if (!revealPage || publicLoading || reducedMotion || !("IntersectionObserver" in window)) return undefined;
+    const revealItems = document.querySelectorAll(".home-page [data-reveal], .case-page [data-reveal], .site-footer [data-reveal]");
     document.documentElement.classList.add("motion-ready");
     const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
       if (!entry.isIntersecting) return;
@@ -1238,7 +1238,7 @@ export default function App() {
     }), { threshold: 0.12, rootMargin: "0px 0px -7% 0px" });
     revealItems.forEach((item) => observer.observe(item));
     return () => { observer.disconnect(); document.documentElement.classList.remove("motion-ready"); };
-  }, [path]);
+  }, [path, publicLoading]);
   useEffect(() => {
     const hero = document.querySelector(".home-hero");
     const title = hero?.querySelector(".home-title");
