@@ -1,24 +1,60 @@
 # Prem Kumar Thanneru — Portfolio
 
-A React and JSX portfolio with public pages and a browser-local case study CMS.
+This is a React + Vite portfolio. The published website is generated only from the checked-in files in `src/data/` and assets in `public/`. There is no backend, database, or external CMS service.
 
 ## Run locally
 
+1. Install Node.js 20 or newer.
+2. Install dependencies and start Vite:
+
+   ```sh
+   npm install
+   npm run dev
+   ```
+
+3. Open the Vite URL and visit `/admin`.
+
+The admin CMS stores a working copy and uploaded file Blobs in this browser's IndexedDB. That copy is local to the current browser and device; it does not change the live website.
+
+## Admin and publishing
+
+The passcode is a convenience gate only. It is not server-side authentication and does not protect a deployed website's source files. Configure it locally before using `/admin`:
+
 ```sh
-npm install
-npm run dev
+npm run set-passcode
 ```
 
-Open the Vite URL and visit `/admin` to set a browser passcode and manage case studies and site content. Add a case study with a thumbnail, title, description, and Figma prototype iframe or URL. Preview the embed, then save it as a draft or publish it. Published case studies appear on the Work page at `/work/<slug>`; featured published projects also appear on the home page.
+The command prompts without echoing the passcode and writes only a SHA-256 hash to `src/data/adminPasscode.js`. Do not commit the passcode itself.
 
-Vercel serves this client-side application through the rewrite in `vercel.json`, so routes such as `/admin`, `/about`, and `/work/<slug>` load the React app when opened directly.
+To publish a CMS change:
 
-Figma embeds are rendered in a sandboxed iframe. Only HTTPS prototype URLs from `embed.figma.com` are accepted; the CMS extracts and stores the iframe `src` rather than rendering pasted HTML. Public case studies and CMS previews include a native browser full-screen viewer with animated open/close, Escape-to-close, and no iframe reload when entering full screen.
+1. Make your edits in `/admin`.
+2. Select **Export for GitHub** and download the ZIP.
+3. Copy the ZIP's files into the matching locations in the project.
+4. Run `git add`, `git commit` and `git push`. Vercel will redeploy from the updated source.
 
-## Storage and privacy
+Until that push and redeploy, the live site remains unchanged. **Reset to published data** discards the browser's working copy and returns to the checked-in data. **Migrate browser data** imports the old `prem-portfolio-v1` localStorage record and `prem-portfolio-files` resume Blobs without deleting them. After a successful export, the separate **Clear old data** action can remove that old browser backup.
 
-This frontend-only version saves edits and the passcode in the current browser's `localStorage`. Uploaded cover images and resume PDFs are stored in browser storage (`localStorage` and IndexedDB, respectively). Data is not synchronized to another browser or device; clearing browser data removes it. The passcode is only a convenience gate and is **not secure authentication**. Do not use this setup for sensitive data or a publicly deployed private CMS.
+## Editing by hand
 
-Uploaded project images are limited to JPG, PNG, or WebP files up to 2 MB each. Resume uploads accept multiple PDF files, up to 20 MB each; exactly one can be active and linked on the About page, homepage navigation, and Work-page navigation, with view and download actions. Browser storage is limited, so large or numerous files can prevent saving.
+- Case studies: `src/data/caseStudies.js`
+- Site content: `src/data/siteContent.js`
+- Featured project limit and active resume: `src/data/settings.js`
+- Thumbnails: `public/thumbnails/`
+- Case-study images: `public/case-images/`
+- Resumes: `public/resumes/`
 
-There is no server-side database, file storage, or authentication service in this project. Case studies, resume files, and the passcode remain in the current browser; they are not synchronized to visitors' browsers or other devices. To make an uploaded resume available to all website visitors, add a backend or deploy the resume as a site asset. The CMS passcode is only a convenience gate and does not protect data on a deployed public site.
+Only case studies with `status: "Published"` appear on public pages. The homepage selects featured published projects up to `featuredLimit`; published slugs power `/work/<slug>`. Keep Figma prototype URLs in `figmaEmbedUrl` and use the CMS preview to check them before exporting.
+
+The current `/Prem-Kumar-Resume.pdf` remains the default resume. To replace it by hand, replace that file while keeping the same name, or update `activeResumePath` in `src/data/settings.js` to a PDF under `public/resumes/`. In the CMS, you can upload multiple PDFs, choose the active version, and export them with the data files.
+
+Images added in the CMS are resized to a maximum width of 1600 pixels and stored as WebP Blobs in IndexedDB. PDFs must be 10 MB or smaller. Uploaded files are only added to the deployed site when their ZIP export is copied into the project and pushed.
+
+## Build and preview
+
+```sh
+npm run build
+npm run preview
+```
+
+Vercel builds the static site with `npm run build` and serves the SPA fallback configured in `vercel.json`.
