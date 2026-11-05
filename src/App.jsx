@@ -121,7 +121,20 @@ function Header({ navigate, active = "", resumeUrl, resumeFilename }) {
   );
 }
 
-function Footer({ content, navigate, variant = "" }) {
+const designTools = [
+  ["Sketch", "S", "sketch"],
+  ["Adobe XD", "Xd", "xd"],
+  ["Figma", "F", "figma"],
+  ["InVision", "In", "invision"],
+  ["Axure RP", "Ax", "axure"],
+  ["Adobe Photoshop", "Ps", "photoshop"],
+  ["Adobe Illustrator", "Ai", "illustrator"],
+  ["Balsamiq Mockups", "B", "balsamiq"],
+  ["Zeplin", "Z", "zeplin"],
+  ["Miro", "M", "miro"],
+];
+
+function Footer({ content, navigate, variant = "home-footer" }) {
   return (
     <footer className={`site-footer ${variant}`}>
       <div className="footer-top" data-reveal>
@@ -139,6 +152,22 @@ function Footer({ content, navigate, variant = "" }) {
         <span>Designed with intention.</span>
       </div>
     </footer>
+  );
+}
+
+function FloatingTools({ variant }) {
+  return (
+    <aside className={`tool-showcase tool-showcase-${variant}${variant === "home" ? "" : " tool-showcase-compact"}`} aria-label="Design tools">
+      <div className="tool-showcase-glow" aria-hidden="true" />
+      <div className="tool-showcase-card" aria-hidden="true"><span>DESIGN TOOLKIT</span><strong>P<span>+</span></strong></div>
+      {designTools.map(([name, mark, slug], index) => (
+        <span className={`floating-tool floating-tool-${slug}`} key={slug} style={{ "--tool-delay": `${index * -0.55}s` }}>
+          <span className="floating-tool-mark" aria-hidden="true">{mark}</span>
+          <span>{name}</span>
+        </span>
+      ))}
+      {variant === "home" && <button className="tool-showcase-down" type="button" aria-label="Scroll to selected work" onClick={() => document.getElementById("selected-work")?.scrollIntoView({ behavior: "smooth" })}>↓</button>}
+    </aside>
   );
 }
 
@@ -230,15 +259,16 @@ function HomePage({ content, projects, navigate, resumeUrl, resumeFilename, feat
         <section className="intro-section section-shell">
           <p className="eyebrow" data-reveal>A THOUGHTFUL APPROACH TO DIGITAL</p>
           <div className="intro-grid">
-            <h2 data-reveal>{headlineWords.join(" ")} <em>{headlineAccent}</em></h2>
-            <div data-reveal>
+            <div className="intro-copy" data-reveal>
+              <h2>{headlineWords.join(" ")} <em>{headlineAccent}</em></h2>
               <p>{content.about}</p>
               <button className="text-link" onClick={() => navigate("/about")}>A little more about me <Arrow /></button>
             </div>
+            <FloatingTools variant="home" />
           </div>
         </section>
 
-        <section className="work-section section-shell">
+        <section className="work-section section-shell" id="selected-work">
           <div className="section-heading" data-reveal>
             <div><p className="eyebrow">A FEW THINGS I’VE MADE</p><h2>Selected work<span className="rose-dot">.</span></h2></div>
             <button className="text-link" onClick={() => navigate("/work")}>View all projects <Arrow /></button>
@@ -283,6 +313,7 @@ function WorkPage({ content, projects, navigate, resumeUrl, resumeFilename }) {
       <main className="page-main section-shell">
         <div className="page-kicker"><span>SELECTED WORK</span><span>2024 — 2025</span></div>
         <div className="page-title-row"><h1 className="page-title">Things made<br /><em>with meaning.</em></h1><p className="page-lede">A collection of digital experiences, ideas and the details that bring them to life.</p></div>
+        <FloatingTools variant="work" />
         <div className="filter-row" aria-label="Filter projects">
           {categories.map((category) => <button className={category === filter ? "filter-active" : ""} key={category} onClick={() => setFilter(category)}>{category}</button>)}
           <span>{visible.length} PROJECT{visible.length === 1 ? "" : "S"}</span>
@@ -387,7 +418,7 @@ function FigmaEmbed({ src, title }) {
 
 function ProjectPage({ project, projects, content, navigate }) {
   if (!project || project.status !== "Published") {
-    return <><Header navigate={navigate} /><main className="not-found"><p className="eyebrow">NOT FOUND</p><h1>This project isn’t here.</h1><button className="text-link" onClick={() => navigate("/work")}>Back to work <Arrow /></button></main><Footer content={content} navigate={navigate} /></>;
+    return <><Header navigate={navigate} /><main className="not-found"><p className="eyebrow">NOT FOUND</p><h1>This project isn’t here.</h1><button className="text-link" onClick={() => navigate("/work")}>Back to work <Arrow /></button><FloatingTools variant="notfound" /></main><Footer content={content} navigate={navigate} /></>;
   }
   const related = projects.filter((item) => item.status === "Published" && item.id !== project.id).slice(0, 2);
   const figmaEmbedUrl = extractFigmaEmbedUrl(project.figmaEmbedUrl || "");
@@ -400,6 +431,7 @@ function ProjectPage({ project, projects, content, navigate }) {
           <div><p className="eyebrow">{[project.category, project.year].filter(Boolean).join(" · ") || "CASE STUDY"}</p><h1>{project.title}</h1><p className="case-description">{project.description}</p></div>
           {(project.role || project.tools || project.duration) && <dl><div><dt>ROLE</dt><dd>{project.role || "—"}</dd></div><div><dt>TOOLS</dt><dd>{project.tools || "—"}</dd></div><div><dt>DURATION</dt><dd>{project.duration || "—"}</dd></div></dl>}
         </div>
+        <FloatingTools variant="case" />
         {(!figmaEmbedUrl || project.thumbnailUrl || project.image) && <div className="case-cover">
           {(project.thumbnailUrl || project.image) ? <img src={project.thumbnailUrl || project.image} alt={project.thumbnailAlt || `${project.title} cover`} /> : <div className="project-art art-0"><span className="art-title">{project.title}</span><span className="art-orbit" /></div>}
         </div>}
@@ -441,6 +473,7 @@ function AboutPage({ content, navigate, resumeUrl }) {
           </figure>
         </section>
         <div className="about-copy-grid"><p className="eyebrow">A NOTE FROM PREM</p><div><p className="about-lede">{content.about}</p><p className="muted-copy">My path through software development has taught me to see how thoughtful interface decisions and the details behind them work together. I'm now bringing that perspective to product design — making digital tools feel more considered, accessible and easy to use.</p><a className="text-link anchor-link" href={resumeUrl || "/Prem-Kumar-Resume.pdf"} target="_blank" rel="noreferrer">View my resume <Arrow diagonal /></a></div></div>
+        <FloatingTools variant="about" />
         <div className="about-facts">
           <div><p className="eyebrow">EDUCATION</p><h3>B.Tech, Artificial Intelligence & Data Science</h3><p>Usha Rama College of Engineering and Technology · 2025</p><p>CGPA 7.60 / 10</p></div>
           <div><p className="eyebrow">EXPERIENCE</p><h3>Java Full Stack Developer Intern</h3><p>Makeskilled · Jul — Oct 2024</p><h3>Android Developer Intern</h3><p>AICTE EduSkills · Jan — Mar 2024</p></div>
@@ -462,6 +495,7 @@ function ContactPage({ content, navigate }) {
         <p className="contact-intro">I’m always happy to talk about meaningful ideas, thoughtful teams and the little details that make a product feel right.</p>
         <a className="contact-email" href={`mailto:${content.email}`}>{content.email} <Arrow diagonal /></a>
         <div className="contact-details"><span>{content.phone}</span><span>{content.location}</span><a href={content.linkedin} target="_blank" rel="noreferrer">LinkedIn <Arrow diagonal /></a><a href={content.github} target="_blank" rel="noreferrer">GitHub <Arrow diagonal /></a><a href={content.behance} target="_blank" rel="noreferrer">Behance <Arrow diagonal /></a></div>
+        <FloatingTools variant="contact" />
       </main>
       <Footer content={content} navigate={navigate} />
     </>
