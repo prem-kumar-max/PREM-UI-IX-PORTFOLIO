@@ -330,7 +330,6 @@ function FigmaEmbed({ src, title }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [closing, setClosing] = useState(false);
   const closeTimer = useRef(null);
-  const playerRef = useRef(null);
   const safeSrc = extractFigmaEmbedUrl(src);
   const closeFullscreen = () => {
     setClosing(true);
@@ -350,30 +349,18 @@ function FigmaEmbed({ src, title }) {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        if (document.fullscreenElement) {
-          document.exitFullscreen().catch((error) => console.error("Could not exit browser full screen.", error));
-        } else {
-          closeFullscreen();
-        }
-      }
-    };
-    const onFullscreenChange = () => {
-      if (!document.fullscreenElement) closeFullscreen();
+      if (event.key === "Escape") closeFullscreen();
     };
     document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("fullscreenchange", onFullscreenChange);
       window.clearTimeout(closeTimer.current);
     };
   }, [fullscreen]);
   if (!safeSrc) return <div className="figma-embed-status figma-embed-error" role="status">This Figma prototype URL is not allowed.</div>;
   return (
     <div
-      ref={playerRef}
       className={`figma-player${fullscreen ? " is-fullscreen" : ""}${closing ? " is-closing" : ""}`}
       role={fullscreen ? "dialog" : undefined}
       aria-modal={fullscreen ? "true" : undefined}
@@ -385,16 +372,10 @@ function FigmaEmbed({ src, title }) {
         type="button"
         onClick={() => {
           if (fullscreen) {
-            if (document.fullscreenElement) {
-              document.exitFullscreen().catch((error) => console.error("Could not exit browser full screen.", error));
-            }
             closeFullscreen();
           } else {
             setClosing(false);
             setFullscreen(true);
-            if (playerRef.current?.requestFullscreen) {
-              playerRef.current.requestFullscreen().catch((error) => console.error("Could not enter browser full screen; keeping the viewport viewer open.", error));
-            }
           }
         }}
       >{fullscreen ? "Exit full screen ×" : "↗ Watch full screen"}</button>
@@ -436,7 +417,7 @@ function ProjectPage({ project, projects, content, navigate }) {
           {(project.thumbnailUrl || project.image) ? <img src={project.thumbnailUrl || project.image} alt={project.thumbnailAlt || `${project.title} cover`} /> : <div className="project-art art-0"><span className="art-title">{project.title}</span><span className="art-orbit" /></div>}
         </div>}
         {figmaEmbedUrl && <>
-          <div data-reveal><FigmaEmbed src={figmaEmbedUrl} title={project.title} /></div>
+          <div><FigmaEmbed src={figmaEmbedUrl} title={project.title} /></div>
           <a className="figma-open-link" data-reveal href={figmaEmbedUrl} target="_blank" rel="noreferrer">Open in Figma <Arrow diagonal /></a>
         </>}
         {project.sections?.length > 0 && <div className="case-content">
