@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
+    "dev": "node ./node_modules/vite/bin/vite.js",
+    "build": "node ./node_modules/vite/bin/vite.js build",
+    "preview": "node ./node_modules/vite/bin/vite.js preview",
     "set-passcode": "node scripts/set-passcode.js"
   },
   "dependencies": {
@@ -17,6 +17,6 @@
     "vite": "^6.0.7"
   },
   "engines": {
-    "node": ">=20"
+    "node": "20.x"
   }
 }
