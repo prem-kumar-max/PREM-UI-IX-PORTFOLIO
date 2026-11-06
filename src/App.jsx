@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteCaseStudy,
+  deleteCertificate as deleteCertificateRow,
   deleteMedia,
   getSession,
   isValidSlug,
@@ -8,14 +9,19 @@ import {
   loadPublicData,
   migrateLegacyData,
   onAuthStateChange,
+  reorderCertificates as reorderCertificatesRows,
   saveCaseStudy,
+  saveCertificate as saveCertificateRow,
   saveFeaturedLimit,
   saveSiteContent,
   signIn,
   signOut,
   updateCaseStudyStatus,
+  uploadCertificateImage,
+  uploadCertificatePdf,
   uploadMedia,
 } from "./api.js";
+import CertificatesManager, { AboutCertificates } from "./CertificatesManager.jsx";
 import { caseStudies } from "./data/caseStudies.js";
 import { settings } from "./data/settings.js";
 import { siteContent } from "./data/siteContent.js";
@@ -619,6 +625,7 @@ function AboutPage({ content, navigate, resumeUrl }) {
               <p className="skill-cloud">{content.technologies}</p>
             </div>
           </section>
+          <AboutCertificates />
         </main>
       </div>
       <Footer content={content} navigate={navigate} />
@@ -810,13 +817,13 @@ function AdminLogin({ error: serverError, onLogin }) {
 }
 
 function AdminShell({ children, section, setSection, onLogout, navigate, dirty }) {
-  const navItems = [["overview", "Overview"], ["projects", "Case studies"], ["content", "Site content"], ["about", "About page"], ["settings", "Settings"]];
+  const navItems = [["overview", "Overview"], ["projects", "Case studies"], ["certificates", "Certificates"], ["content", "Site content"], ["about", "About page"], ["settings", "Settings"]];
   return (
     <div className="admin-layout">
       <aside className="admin-sidebar">
         <Brand onClick={() => navigate("/")} />
         <p className="admin-label">WORKSPACE</p>
-        <nav>{navItems.map(([id, label]) => <button key={id} className={section === id ? "admin-nav-active" : ""} onClick={() => setSection(id)}><span className={`admin-nav-icon icon-${id}`}>{id === "overview" ? "◫" : id === "projects" ? "▤" : id === "about" ? "◉" : "◈"}</span>{label}</button>)}</nav>
+        <nav>{navItems.map(([id, label]) => <button key={id} className={section === id ? "admin-nav-active" : ""} onClick={() => setSection(id)}><span className={`admin-nav-icon icon-${id}`}>{id === "overview" ? "◫" : id === "projects" ? "▤" : id === "certificates" ? "✦" : id === "about" ? "◉" : "◈"}</span>{label}</button>)}</nav>
         <div className="admin-side-bottom"><span className="status-dot" />Supabase CMS<button onClick={() => navigate("/")}>↗ View portfolio</button><button onClick={onLogout}>↪ Sign out</button></div>
       </aside>
       <div className="admin-main">
@@ -1563,6 +1570,47 @@ function AdminPage({ navigate }) {
     setData((current) => ({ ...current, projects: current.projects.map((item) => item.id === id ? saved : item) }));
     return saved;
   };
+  const saveCertificateContent = async (certificate, pendingPaths = []) => {
+    const previous = data.certificates.find((item) => item.id === certificate.id);
+    const saved = await saveCertificateRow(certificate, previous?.revision ?? null);
+    setData((current) => ({
+      ...current,
+      certificates: current.certificates.some((item) => item.id === saved.id)
+        ? current.certificates.map((item) => item.id === saved.id ? saved : item)
+        : [...current.certificates, saved],
+    }));
+    const retainedPaths = new Set([saved.imagePath, saved.pdfPath].filter(Boolean));
+    const removedPaths = [
+      previous?.imagePath,
+      previous?.pdfPath,
+      ...pendingPaths,
+    ].filter((path) => path && !retainedPaths.has(path));
+    if (removedPaths.length) {
+      try {
+        await deleteMedia(removedPaths);
+      } catch (error) {
+        setNotice(`Certificate saved, but old media could not be removed: ${error.message}`);
+      }
+    }
+    return saved;
+  };
+  const removeCertificate = async (certificate) => {
+    await deleteCertificateRow(certificate);
+    setData((current) => ({ ...current, certificates: current.certificates.filter((item) => item.id !== certificate.id) }));
+    try {
+      await deleteMedia([certificate.imagePath, certificate.pdfPath].filter(Boolean));
+    } catch (error) {
+      setNotice(`Certificate deleted, but old media could not be removed: ${error.message}`);
+    }
+  };
+  const reorderCertificateContent = async (certificate, neighbor) => {
+    const saved = await reorderCertificatesRows(certificate, neighbor);
+    setData((current) => ({
+      ...current,
+      certificates: current.certificates.map((item) => saved.find((updated) => updated.id === item.id) || item),
+    }));
+    return saved;
+  };
   const saveContent = async (content) => {
     const updated = await saveSiteContent(content, data.contentRevision);
     setData((current) => ({ ...current, content: updated.content, contentRevision: updated.revision }));
@@ -1607,6 +1655,7 @@ function AdminPage({ navigate }) {
       {notice && <p className="inline-notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></p>}
       {section === "overview" ? <Dashboard projects={data.projects} setSection={safeSetSection} /> :
         section === "projects" ? <CaseStudiesManager projects={data.projects} setProjects={(updater) => setData((current) => ({ ...current, projects: typeof updater === "function" ? updater(current.projects) : updater }))} onSaveProject={saveProject} onDeleteProject={removeProject} onChangeStatus={changeProjectStatus} onUploadAsset={(file, folder) => uploadMedia(file, folder)} onDiscardAsset={(path) => deleteMedia([path])} onDirtyChange={handleDirtyChange} /> :
+          section === "certificates" ? <CertificatesManager certificates={data.certificates} setCertificates={(updater) => setData((current) => ({ ...current, certificates: typeof updater === "function" ? updater(current.certificates) : updater }))} onSaveCertificate={saveCertificateContent} onDeleteCertificate={removeCertificate} onReorderCertificates={reorderCertificateContent} onUploadImage={uploadCertificateImage} onUploadPdf={uploadCertificatePdf} onDiscardAssets={deleteMedia} onDirtyChange={handleDirtyChange} /> :
           section === "content" ? <SiteContentEditor content={data.content} onSave={saveContent} onDirtyChange={handleDirtyChange} /> :
             section === "about" ? <AboutContentEditor content={data.content} onSave={saveContent} onDirtyChange={handleDirtyChange} /> :
               <SettingsManager settings={data.settings} onSave={saveSettings} working={working} migrationReady={migrationReady} onMigrate={migrate} onClearLegacy={clearLegacyData} onDirtyChange={handleDirtyChange} />}

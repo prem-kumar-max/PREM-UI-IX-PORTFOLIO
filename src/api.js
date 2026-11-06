@@ -124,6 +124,49 @@ export function fromDatabaseSettings(row) {
   return { featuredLimit: row.featured_limit, revision: row.revision };
 }
 
+export function fromDatabaseCertificate(row) {
+  return {
+    id: row.id,
+    title: row.title || "",
+    issuer: row.issuer || "",
+    category: row.category || "",
+    issuedOn: row.issued_on || "",
+    expiresOn: row.expires_on || "",
+    credentialId: row.credential_id || "",
+    credentialUrl: row.credential_url || "",
+    imageUrl: row.image_url || "",
+    imagePath: row.image_path || "",
+    imageAlt: row.image_alt || "",
+    pdfUrl: row.pdf_url || "",
+    pdfPath: row.pdf_path || "",
+    sortOrder: row.sort_order ?? 0,
+    status: row.status === "published" ? "Published" : "Draft",
+    revision: row.revision,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function toDatabaseCertificate(certificate) {
+  return {
+    title: certificate.title.trim(),
+    issuer: certificate.issuer || "",
+    category: certificate.category || "",
+    issued_on: certificate.issuedOn ? `${certificate.issuedOn.slice(0, 7)}-01` : null,
+    expires_on: certificate.expiresOn || null,
+    credential_id: certificate.credentialId || "",
+    credential_url: certificate.credentialUrl || "",
+    image_url: certificate.imageUrl || "",
+    image_path: certificate.imagePath || "",
+    image_alt: certificate.imageAlt || "",
+    pdf_url: certificate.pdfUrl || "",
+    pdf_path: certificate.pdfPath || "",
+    sort_order: certificate.sortOrder ?? 0,
+    status: certificate.status === "Published" ? "published" : "draft",
+    updated_at: new Date().toISOString(),
+  };
+}
+
 async function loadSingleton(table, operation) {
   const { data, error } = await client().from(table).select("*").eq("singleton_id", 1).single();
   throwDatabaseError(error, operation);
@@ -148,18 +191,81 @@ export async function loadPublicData() {
 
 export async function loadAdminData() {
   const db = client();
-  const [caseStudiesResult, siteContentRow, settingsRow] = await Promise.all([
+  const [caseStudiesResult, siteContentRow, settingsRow, certificatesResult] = await Promise.all([
     db.from("case_studies").select("*").order("updated_at", { ascending: false }),
     loadSingleton("site_content", "Could not load site content"),
     loadSingleton("settings", "Could not load portfolio settings"),
+    db.from("certificates").select("*").order("sort_order", { ascending: true }).order("issued_on", { ascending: false }),
   ]);
   throwDatabaseError(caseStudiesResult.error, "Could not load case studies");
+  throwDatabaseError(certificatesResult.error, "Could not load certificates");
   return {
     projects: (caseStudiesResult.data || []).map(fromDatabaseCaseStudy),
     content: fromDatabaseSiteContent(siteContentRow.content),
     contentRevision: siteContentRow.revision,
     settings: fromDatabaseSettings(settingsRow),
+    certificates: (certificatesResult.data || []).map(fromDatabaseCertificate),
   };
+}
+
+export async function loadPublishedCertificates() {
+  const { data, error } = await client().from("certificates")
+    .select("*")
+    .eq("status", "published")
+    .order("sort_order", { ascending: true })
+    .order("issued_on", { ascending: false });
+  throwDatabaseError(error, "Could not load published certificates");
+  return (data || []).map(fromDatabaseCertificate);
+}
+
+export async function saveCertificate(certificate, loadedRevision = null) {
+  const db = client();
+  const row = toDatabaseCertificate(certificate);
+  if (loadedRevision === null) {
+    const { data, error } = await db.from("certificates").insert({
+      id: certificate.id,
+      ...row,
+      revision: 1,
+    }).select().single();
+    throwDatabaseError(error, "Could not create certificate");
+    return fromDatabaseCertificate(data);
+  }
+  const { data, error } = await db.from("certificates")
+    .update({ ...row, revision: loadedRevision + 1 })
+    .eq("id", certificate.id)
+    .eq("revision", loadedRevision)
+    .select()
+    .maybeSingle();
+  throwDatabaseError(error, "Could not save certificate");
+  return fromDatabaseCertificate(requireUpdatedRow(data));
+}
+
+export async function deleteCertificate(certificate) {
+  const { data, error } = await client().from("certificates")
+    .delete()
+    .eq("id", certificate.id)
+    .eq("revision", certificate.revision)
+    .select()
+    .maybeSingle();
+  throwDatabaseError(error, "Could not delete certificate");
+  requireUpdatedRow(data);
+}
+
+export async function reorderCertificates(certificate, neighbor) {
+  const firstOriginalOrder = certificate.sortOrder;
+  const secondOriginalOrder = neighbor.sortOrder;
+  const firstSaved = await saveCertificate({ ...certificate, sortOrder: secondOriginalOrder }, certificate.revision);
+  try {
+    const secondSaved = await saveCertificate({ ...neighbor, sortOrder: firstOriginalOrder }, neighbor.revision);
+    return [firstSaved, secondSaved];
+  } catch (error) {
+    try {
+      await saveCertificate({ ...firstSaved, sortOrder: firstOriginalOrder }, firstSaved.revision);
+    } catch (rollbackError) {
+      throw new Error(`${error.message} The order could not be fully restored: ${rollbackError.message}`);
+    }
+    throw error;
+  }
 }
 
 export async function saveCaseStudy(project, loadedRevision = null) {
@@ -230,15 +336,17 @@ function detectImageType(bytes) {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
   if (bytes.length >= 8 && bytes.slice(0, 8).join(",") === "137,80,78,71,13,10,26,10") return "image/png";
   if (bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP") return "image/webp";
+  if (bytes.length >= 6 && ["GIF87a", "GIF89a"].includes(String.fromCharCode(...bytes.slice(0, 6)))) return "image/gif";
   return "";
 }
 
-async function verifyAndResizeImage(file) {
+async function verifyAndResizeImage(file, allowGif = false) {
   if (!file || file.size === 0) throw new Error("Choose an image file.");
   if (file.size > 8 * 1024 * 1024) throw new Error("Images must be 8 MB or smaller before resizing.");
   const header = new Uint8Array(await file.slice(0, 12).arrayBuffer());
   const inputType = detectImageType(header);
-  if (!inputType) throw new Error("Choose a valid JPG, PNG, or WebP image.");
+  const formats = allowGif ? "JPG, PNG, WebP, or GIF" : "JPG, PNG, or WebP";
+  if (!inputType || (inputType === "image/gif" && !allowGif)) throw new Error(`Choose a valid ${formats} image.`);
   const bitmap = await createImageBitmap(new Blob([file], { type: inputType }));
   const scale = Math.min(1, 1600 / bitmap.width);
   const canvas = document.createElement("canvas");
@@ -277,11 +385,40 @@ export async function uploadMedia(file, folder) {
   return { url: data.publicUrl, path };
 }
 
+export async function uploadCertificateImage(file) {
+  const { blob, contentType, extension } = await verifyAndResizeImage(file, true);
+  const path = `certificates/${crypto.randomUUID()}.${extension}`;
+  const { error } = await client().storage.from(MEDIA_BUCKET).upload(path, blob, {
+    contentType,
+    cacheControl: "31536000",
+    upsert: false,
+  });
+  throwDatabaseError(error, "Could not upload certificate image");
+  const { data } = client().storage.from(MEDIA_BUCKET).getPublicUrl(path);
+  return { url: data.publicUrl, path };
+}
+
+export async function uploadCertificatePdf(file) {
+  if (!file || file.size === 0) throw new Error("Choose a PDF file.");
+  if (file.size > 10 * 1024 * 1024) throw new Error("PDFs must be 10 MB or smaller.");
+  const signature = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+  if (String.fromCharCode(...signature) !== "%PDF-") throw new Error("Choose a valid PDF file.");
+  const path = `certificates/${crypto.randomUUID()}.pdf`;
+  const { error } = await client().storage.from(MEDIA_BUCKET).upload(path, file, {
+    contentType: "application/pdf",
+    cacheControl: "31536000",
+    upsert: false,
+  });
+  throwDatabaseError(error, "Could not upload certificate PDF");
+  const { data } = client().storage.from(MEDIA_BUCKET).getPublicUrl(path);
+  return { url: data.publicUrl, path };
+}
+
 export async function deleteMedia(paths) {
   const uniquePaths = [...new Set(paths.filter(Boolean))];
   if (!uniquePaths.length) return;
   const { error } = await client().storage.from(MEDIA_BUCKET).remove(uniquePaths);
-  throwDatabaseError(error, "Could not remove previous image");
+  throwDatabaseError(error, "Could not remove previous media");
 }
 
 export async function signIn(email, password) {
