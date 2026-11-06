@@ -25,6 +25,7 @@ import CertificatesManager, { AboutCertificates } from "./CertificatesManager.js
 import { caseStudies } from "./data/caseStudies.js";
 import { settings } from "./data/settings.js";
 import { siteContent } from "./data/siteContent.js";
+import { sendContactMessage } from "./emailjs.js";
 import { supabaseConfigError } from "./supabase.js";
 
 const LEGACY_STORAGE_KEY = "prem-portfolio-v1";
@@ -671,12 +672,40 @@ function ContactIllustration() {
 
 function ContactPage({ content, navigate }) {
   const [formNotice, setFormNotice] = useState(null);
-  const [draftHref, setDraftHref] = useState("");
+  const [sendState, setSendState] = useState("idle");
+  const cooldownTimeout = useRef(null);
 
-  const submitContactForm = (event) => {
+  useEffect(() => () => {
+    if (cooldownTimeout.current) window.clearTimeout(cooldownTimeout.current);
+  }, []);
+
+  const clearFormNotice = () => {
+    if (sendState === "sending") return;
+    if (sendState !== "sent") setSendState("idle");
+    setFormNotice(null);
+  };
+
+  const markMessageSent = (form) => {
+    form.reset();
+    setSendState("sent");
+    setFormNotice({ type: "success", text: "Thank you! Your message has been sent. A confirmation is on its way to your inbox." });
+    if (cooldownTimeout.current) window.clearTimeout(cooldownTimeout.current);
+    cooldownTimeout.current = window.setTimeout(() => {
+      setSendState("idle");
+      cooldownTimeout.current = null;
+    }, 30000);
+  };
+
+  const submitContactForm = async (event) => {
     event.preventDefault();
+    if (sendState === "sending" || sendState === "sent") return;
     const form = event.currentTarget;
     const formData = new FormData(form);
+    if (String(formData.get("company") || "").trim()) {
+      markMessageSent(form);
+      return;
+    }
+
     const name = String(formData.get("name") || "").trim();
     const email = String(formData.get("email") || "").trim();
     const subject = String(formData.get("subject") || "").trim();
@@ -688,15 +717,20 @@ function ContactPage({ content, navigate }) {
     messageField.setCustomValidity(message ? "" : "Please enter a message.");
     if (!form.checkValidity()) {
       form.reportValidity();
+      setSendState("error");
       setFormNotice({ type: "error", text: "Please complete the required fields with a valid email address." });
-      setDraftHref("");
       return;
     }
 
-    const emailSubject = subject || "Portfolio inquiry";
-    const emailBody = `Name: ${name}\nEmail: ${email}\n\n${message}`;
-    setDraftHref(`mailto:${content.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`);
-    setFormNotice({ type: "draft", text: "Your draft is ready. It will open in your email app; it has not been sent." });
+    setSendState("sending");
+    setFormNotice(null);
+    try {
+      await sendContactMessage({ name, email, subject, message });
+      markMessageSent(form);
+    } catch (error) {
+      setSendState("error");
+      setFormNotice({ type: "error", text: "Something went wrong. Please try again, or email me directly at", fallback: true });
+    }
   };
 
   return (
@@ -746,27 +780,28 @@ function ContactPage({ content, navigate }) {
               <span className="contact-form-sphere contact-form-sphere-two" aria-hidden="true" />
             </div>
             <form className="contact-form" onSubmit={submitContactForm} noValidate>
+              <input className="contact-honeypot" type="text" name="company" tabIndex={-1} autoComplete="off" aria-hidden="true" />
               <div className="contact-form-row">
-                <label htmlFor="contact-name">Your Name <span aria-hidden="true">*</span></label>
-                <input id="contact-name" name="name" type="text" autoComplete="name" placeholder="Your name" required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={() => setFormNotice(null)} />
-                <label htmlFor="contact-email">Your Email <span aria-hidden="true">*</span></label>
-                <input id="contact-email" name="email" type="email" autoComplete="email" placeholder="you@example.com" required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={() => setFormNotice(null)} />
+                <div className="contact-field">
+                  <label htmlFor="contact-name">Your Name <span aria-hidden="true">*</span></label>
+                  <input id="contact-name" name="name" type="text" autoComplete="name" placeholder="Your name" maxLength={100} required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={clearFormNotice} />
+                </div>
+                <div className="contact-field">
+                  <label htmlFor="contact-email">Your Email <span aria-hidden="true">*</span></label>
+                  <input id="contact-email" name="email" type="email" autoComplete="email" placeholder="you@example.com" maxLength={200} required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={clearFormNotice} />
+                </div>
               </div>
-              <label htmlFor="contact-subject">Subject <span aria-hidden="true">*</span></label>
-              <select id="contact-subject" name="subject" required defaultValue="" onChange={() => setFormNotice(null)}>
-                <option value="" disabled>Select a subject</option>
-                <option value="Project inquiry">Project inquiry</option>
-                <option value="Design collaboration">Design collaboration</option>
-                <option value="Something else">Something else</option>
-              </select>
+              <label htmlFor="contact-subject">Subject <span className="contact-optional">(optional)</span></label>
+              <input id="contact-subject" name="subject" type="text" placeholder="What would you like to discuss?" onChange={clearFormNotice} />
               <label htmlFor="contact-message">Your Message <span aria-hidden="true">*</span></label>
-              <textarea id="contact-message" name="message" rows="4" placeholder="Tell me a little about it…" required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={() => setFormNotice(null)} />
-              <button className="contact-submit" type="submit">Send Message <Arrow /></button>
-              <p className="contact-form-footnote">Opens a prefilled draft in your email app. It won’t send until you choose Send.</p>
+              <textarea id="contact-message" name="message" rows="4" placeholder="Tell me a little about it…" maxLength={2000} required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={clearFormNotice} />
+              <button className="contact-submit" type="submit" disabled={sendState === "sending" || sendState === "sent"}>{sendState === "sending" ? "Sending…" : "Send Message"} {sendState !== "sending" && <Arrow />}</button>
+              <p className="contact-form-footnote">I'll reply within a few days. You'll also get a confirmation email.</p>
               {formNotice && (
                 <div className={`contact-form-notice contact-form-notice-${formNotice.type}`} role={formNotice.type === "error" ? "alert" : "status"} aria-live="polite">
-                  <span>{formNotice.text}</span>
-                  {draftHref && <a href={draftHref}>Open email draft <Arrow diagonal /></a>}
+                  {formNotice.fallback ? (
+                    <span>{formNotice.text} <a href={`mailto:${content.email}`}>{content.email}</a>.</span>
+                  ) : <span>{formNotice.text}</span>}
                 </div>
               )}
             </form>
