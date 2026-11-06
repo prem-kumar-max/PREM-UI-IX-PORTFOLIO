@@ -76,6 +76,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .project-card-1 .project-image { background: #e7e1d9; }
 .project-card-2 .project-image { background: #e7d5ce; }
 .project-image > img, .case-cover > img, .section-image { width: 100%; height: 100%; object-fit: cover; display: block; }
+.project-image > img { object-fit: contain; }
 .project-open { width: 42px; height: 42px; position: absolute; right: 17px; top: 17px; background: var(--cream); display: grid; place-items: center; border-radius: 50%; font-size: 16px; opacity: 0; transform: translateY(5px); transition: .25s ease; }
 .project-card:hover .project-open { opacity: 1; transform: none; }
 .project-card:hover .art-title { transform: translateY(-5px); }
@@ -900,7 +901,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   transition: transform .8s cubic-bezier(.2,.7,.2,1);
 }
 .home-page .project-card:hover .project-image > img {
-  transform: scale(1.035);
+  transform: none;
 }
 .home-page .project-card:hover .project-art {
   transform: scale(1.025);
@@ -2330,7 +2331,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   transition: transform .7s cubic-bezier(.2, .7, .2, 1);
 }
 .work-page-main .project-card:hover .project-image > img {
-  transform: scale(1.035);
+  transform: none;
 }
 .work-page-main .project-open {
   top: 14px;
@@ -4350,4 +4351,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .about-page-shell .about-experience-entry + .about-experience-entry {
   margin-top: 21px;
   padding-top: 2px;
+}
+
+.project-image.has-thumbnail {
+  aspect-ratio: auto;
+}
+.project-image.has-thumbnail > img {
+  height: auto;
+  object-fit: contain;
+}
+.home-page .project-image {
+  transition: transform .35s ease, box-shadow .35s ease;
+}
+.home-page .project-card:hover .project-image,
+.home-page .project-card:focus-visible .project-image {
+  transform: translateY(-4px);
+  box-shadow: 0 24px 44px rgba(39, 30, 58, .18);
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-page .project-image {
+    transition: none;
+  }
 }

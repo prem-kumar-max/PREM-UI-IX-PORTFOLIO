@@ -265,7 +265,7 @@ function ProjectCard({ project, index, onClick, reveal = false }) {
   const thumbnail = project.thumbnailUrl || project.image;
   return (
     <button className={`project-card project-card-${index % 3}`} onClick={onClick} data-reveal={reveal ? "" : undefined}>
-      <div className="project-image">
+      <div className={`project-image${thumbnail ? " has-thumbnail" : ""}`}>
         {thumbnail ? (
           <img src={thumbnail} alt={project.thumbnailAlt || `${project.title} project preview`} />
         ) : (
