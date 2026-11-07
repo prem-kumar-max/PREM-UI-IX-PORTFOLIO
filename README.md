@@ -2,7 +2,7 @@
 
 ## Run locally
 
-Copy `.env.example` to `.env` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from the Supabase project, along with `VITE_EMAILJS_SERVICE_ID`, `VITE_EMAILJS_PUBLIC_KEY`, `VITE_EMAILJS_NOTIFY_TEMPLATE_ID`, and `VITE_EMAILJS_REPLY_TEMPLATE_ID` for the contact form. Then run:
+Copy `.env.example` to `.env` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from the Supabase project. Then run:
 
 ```sh
 npm ci
@@ -21,4 +21,4 @@ The resume is a regular file at `public/Prem-Kumar-Resume.pdf`. Replace that PDF
 
 ## Vercel
 
-Add `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_EMAILJS_SERVICE_ID`, `VITE_EMAILJS_PUBLIC_KEY`, `VITE_EMAILJS_NOTIFY_TEMPLATE_ID`, and `VITE_EMAILJS_REPLY_TEMPLATE_ID` as project environment variables for every deployment environment. The anon key is intended for browser use; never add a service-role or secret key to the frontend. Vercel builds with `npm run build` and serves the SPA rewrite in `vercel.json`.
+Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as project environment variables for every deployment environment. The anon key is intended for browser use; never add a service-role or secret key to the frontend. Vercel builds with `npm run build` and serves the SPA rewrite in `vercel.json`.

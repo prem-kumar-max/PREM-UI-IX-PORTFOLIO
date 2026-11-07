@@ -1,27 +1,14 @@
 import emailjs from "@emailjs/browser";
 
-const emailJsConfig = {
-  serviceId: import.meta.env.VITE_EMAILJS_SERVICE_ID,
-  publicKey: import.meta.env.VITE_EMAILJS_PUBLIC_KEY,
-  notifyTemplateId: import.meta.env.VITE_EMAILJS_NOTIFY_TEMPLATE_ID,
-  replyTemplateId: import.meta.env.VITE_EMAILJS_REPLY_TEMPLATE_ID,
-};
+// EmailJS settings. These values are public by design (the public key is meant to
+// live in the browser), so they are written here directly. No Vercel environment
+// variables are needed for the contact form.
+const SERVICE_ID = "service_ueshubp";
+const PUBLIC_KEY = "u_O2tIicq0ruHsZN6";
+const NOTIFY_TEMPLATE_ID = "template_6qzntzn"; // email to me
+const REPLY_TEMPLATE_ID = "template_sg8gkdj"; // auto-reply to the visitor
 
 export async function sendContactMessage({ name, email, subject, message }) {
-  const requiredConfig = [
-    ["VITE_EMAILJS_SERVICE_ID", emailJsConfig.serviceId],
-    ["VITE_EMAILJS_PUBLIC_KEY", emailJsConfig.publicKey],
-    ["VITE_EMAILJS_NOTIFY_TEMPLATE_ID", emailJsConfig.notifyTemplateId],
-    ["VITE_EMAILJS_REPLY_TEMPLATE_ID", emailJsConfig.replyTemplateId],
-  ];
-
-  for (const [variable, value] of requiredConfig) {
-    if (!value) {
-      console.error(`EmailJS configuration is missing ${variable}.`);
-      throw new Error(`Missing EmailJS configuration: ${variable}`);
-    }
-  }
-
   if (typeof name !== "string" || name.length > 100) {
     throw new Error("Name must be 100 characters or fewer.");
   }
@@ -40,14 +27,12 @@ export async function sendContactMessage({ name, email, subject, message }) {
     time: new Date().toLocaleString(),
   };
 
-  await emailjs.send(emailJsConfig.serviceId, emailJsConfig.notifyTemplateId, params, {
-    publicKey: emailJsConfig.publicKey,
-  });
+  // 1) Email to me. If this fails, stop.
+  await emailjs.send(SERVICE_ID, NOTIFY_TEMPLATE_ID, params, { publicKey: PUBLIC_KEY });
 
+  // 2) Auto-reply to the visitor. If only this fails, the message still counts as sent.
   try {
-    await emailjs.send(emailJsConfig.serviceId, emailJsConfig.replyTemplateId, params, {
-      publicKey: emailJsConfig.publicKey,
-    });
+    await emailjs.send(SERVICE_ID, REPLY_TEMPLATE_ID, params, { publicKey: PUBLIC_KEY });
   } catch (error) {
     console.warn("EmailJS auto-reply failed after the contact message was sent.", error);
   }
