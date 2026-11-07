@@ -688,7 +688,6 @@ function ContactPage({ content, navigate }) {
   const markMessageSent = (form) => {
     form.reset();
     setSendState("sent");
-    setFormNotice({ type: "success", text: "Thank you! Your message has been sent. A confirmation is on its way to your inbox." });
     if (cooldownTimeout.current) window.clearTimeout(cooldownTimeout.current);
     cooldownTimeout.current = window.setTimeout(() => {
       setSendState("idle");
@@ -779,30 +778,52 @@ function ContactPage({ content, navigate }) {
               <span className="contact-form-sphere contact-form-sphere-one" aria-hidden="true" />
               <span className="contact-form-sphere contact-form-sphere-two" aria-hidden="true" />
             </div>
-            <form className="contact-form" onSubmit={submitContactForm} noValidate>
+            <form className={`contact-form${sendState === "sent" ? " is-sent" : ""}`} onSubmit={submitContactForm} noValidate>
               <input className="contact-honeypot" type="text" name="company" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-              <div className="contact-form-row">
-                <div className="contact-field">
-                  <label htmlFor="contact-name">Your Name <span aria-hidden="true">*</span></label>
-                  <input id="contact-name" name="name" type="text" autoComplete="name" placeholder="Your name" maxLength={100} required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={clearFormNotice} />
+              {sendState === "sent" ? (
+                <div className="contact-form-success" role="status" aria-live="polite">
+                  <span className="contact-success-glow" aria-hidden="true" />
+                  <span className="contact-success-orbit contact-success-orbit-one" aria-hidden="true" />
+                  <span className="contact-success-orbit contact-success-orbit-two" aria-hidden="true" />
+                  <span className="contact-success-spark contact-success-spark-one" aria-hidden="true" />
+                  <span className="contact-success-spark contact-success-spark-two" aria-hidden="true" />
+                  <span className="contact-success-spark contact-success-spark-three" aria-hidden="true" />
+                  <span className="contact-success-mark" aria-hidden="true">
+                    <svg viewBox="0 0 32 32" fill="none">
+                      <path d="m8.5 16.5 5.1 5.1L24 11.2" />
+                    </svg>
+                  </span>
+                  <span className="contact-success-kicker"><span /> MESSAGE SENT</span>
+                  <h3>Well sent.<br /><em>Well received.</em></h3>
+                  <p>Thanks for reaching out. I’ll be in touch soon.</p>
+                  <span className="contact-success-signature">PREM <i /> PORTFOLIO</span>
                 </div>
-                <div className="contact-field">
-                  <label htmlFor="contact-email">Your Email <span aria-hidden="true">*</span></label>
-                  <input id="contact-email" name="email" type="email" autoComplete="email" placeholder="you@example.com" maxLength={200} required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={clearFormNotice} />
-                </div>
-              </div>
-              <label htmlFor="contact-subject">Subject <span className="contact-optional">(optional)</span></label>
-              <input id="contact-subject" name="subject" type="text" placeholder="What would you like to discuss?" onChange={clearFormNotice} />
-              <label htmlFor="contact-message">Your Message <span aria-hidden="true">*</span></label>
-              <textarea id="contact-message" name="message" rows="4" placeholder="Tell me a little about it…" maxLength={2000} required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={clearFormNotice} />
-              <button className="contact-submit" type="submit" disabled={sendState === "sending" || sendState === "sent"}>{sendState === "sending" ? "Sending…" : "Send Message"} {sendState !== "sending" && <Arrow />}</button>
-              <p className="contact-form-footnote">I'll reply within a few days. You'll also get a confirmation email.</p>
-              {formNotice && (
-                <div className={`contact-form-notice contact-form-notice-${formNotice.type}`} role={formNotice.type === "error" ? "alert" : "status"} aria-live="polite">
-                  {formNotice.fallback ? (
-                    <span>{formNotice.text} <a href={`mailto:${content.email}`}>{content.email}</a>.</span>
-                  ) : <span>{formNotice.text}</span>}
-                </div>
+              ) : (
+                <>
+                  <div className="contact-form-row">
+                    <div className="contact-field">
+                      <label htmlFor="contact-name">Your Name <span aria-hidden="true">*</span></label>
+                      <input id="contact-name" name="name" type="text" autoComplete="name" placeholder="Your name" maxLength={100} required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={clearFormNotice} />
+                    </div>
+                    <div className="contact-field">
+                      <label htmlFor="contact-email">Your Email <span aria-hidden="true">*</span></label>
+                      <input id="contact-email" name="email" type="email" autoComplete="email" placeholder="you@example.com" maxLength={200} required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={clearFormNotice} />
+                    </div>
+                  </div>
+                  <label htmlFor="contact-subject">Subject <span className="contact-optional">(optional)</span></label>
+                  <input id="contact-subject" name="subject" type="text" placeholder="What would you like to discuss?" onChange={clearFormNotice} />
+                  <label htmlFor="contact-message">Your Message <span aria-hidden="true">*</span></label>
+                  <textarea id="contact-message" name="message" rows="4" placeholder="Tell me a little about it…" maxLength={2000} required onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={clearFormNotice} />
+                  <button className="contact-submit" type="submit" disabled={sendState === "sending" || sendState === "sent"}>{sendState === "sending" ? "Sending…" : "Send Message"} {sendState !== "sending" && <Arrow />}</button>
+                  <p className="contact-form-footnote">I'll reply within a few days. You'll also get a confirmation email.</p>
+                  {formNotice && (
+                    <div className={`contact-form-notice contact-form-notice-${formNotice.type}`} role={formNotice.type === "error" ? "alert" : "status"} aria-live="polite">
+                      {formNotice.fallback ? (
+                        <span>{formNotice.text} <a href={`mailto:${content.email}`}>{content.email}</a>.</span>
+                      ) : <span>{formNotice.text}</span>}
+                    </div>
+                  )}
+                </>
               )}
             </form>
           </section>
