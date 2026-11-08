@@ -675,20 +675,29 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   margin-right: .12em;
 }
 .home-title strong { font-weight: 400; }
-.home-hero .hero-portrait {
+.hero-portrait-stack {
   position: absolute;
+  inset: 0;
   z-index: 2;
+  pointer-events: none;
+}
+.hero-portrait {
+  position: absolute;
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+.home-hero .hero-portrait--main {
+  position: absolute;
   left: 50%;
-  bottom: 0;
-  width: min(46%, 560px);
-  height: 90%;
-  max-width: none;
-  object-fit: contain;
-  object-position: center 8%;
+  top: 8%;
   transform: translateX(-50%);
-  filter: grayscale(1) contrast(1.04);
-  mix-blend-mode: normal;
-  mask-image: none;
+  width: min(41vw, 620px);
+  max-width: 54%;
+  height: auto;
+  object-fit: contain;
+  object-position: center top;
+  filter: grayscale(1) contrast(1.12) brightness(.8) drop-shadow(0 18px 30px rgba(0,0,0,.18));
 }
 .home-hero .hero-copy {
   position: absolute;
@@ -754,7 +763,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .home-title { font-size: clamp(64px, 12vw, 128px); }
   .home-hero .hero-copy { left: 5%; width: 24%; }
   .home-socials { right: 5%; }
-  .home-hero .hero-portrait { width: 50%; }
+  .home-hero .hero-portrait--main {
+    width: min(48vw, 520px);
+    top: 10%;
+  }
   .toolmark-figma { left: 7%; }
   .toolmark-miro { right: 7%; }
   .toolmark-ps { left: 21%; }
@@ -788,11 +800,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     letter-spacing: -.06em;
   }
   .home-title span { -webkit-text-stroke-width: 1.4px; }
-  .home-hero .hero-portrait {
-    width: 78%;
-    height: 52%;
-    bottom: 31%;
-    object-position: center 6%;
+  .hero-portrait-stack {
+    inset: 8% 0 0;
+  }
+  .home-hero .hero-portrait--main {
+    width: min(78vw, 420px);
+    top: 12%;
+    max-width: 72%;
   }
   .hero-toolmarks { opacity: .14; }
   .toolmark-figma { left: 6%; top: 39%; }

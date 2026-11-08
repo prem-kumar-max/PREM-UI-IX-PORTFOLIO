@@ -336,7 +336,9 @@ function HomePage({ content, projects, navigate, resumeUrl, resumeFilename, feat
               <h1 className="home-title" aria-label={content.name}>
                 <span>{firstName}</span> <strong>{secondName}</strong>
               </h1>
-              <img className="hero-portrait" src={profileImage} alt={`Portrait of ${content.name}`} />
+              <div className="hero-portrait-stack" aria-hidden="true">
+                <img className="hero-portrait hero-portrait--main" src="/home-hero-portrait.png" alt={`Portrait of ${content.name}`} />
+              </div>
               <div className="hero-copy">
                 <p className="home-role">{content.title}</p>
                 <p className="hero-description">{content.intro}</p>
