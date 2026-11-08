@@ -690,7 +690,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .home-hero .hero-portrait--main {
   position: absolute;
   left: 50%;
-  top: 8%;
+  top: 13%;
   transform: translateX(-50%);
   width: min(41vw, 620px);
   max-width: 54%;
@@ -1336,7 +1336,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .case-page .case-study { background: #fff; }
 .case-page .case-heading h1 {
   font-weight: 500;
-  letter-spacing: -.09em;
+  letter-spacing: -.065em;
 }
 .case-page .back-link {
   transition: color .2s ease, transform .2s ease;
@@ -1468,7 +1468,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   background: linear-gradient(to bottom, transparent, #fff 96%);
 }
 .home-title {
-  top: 13%;
+  top: 6%;
   z-index: 1;
   font-family: var(--display);
   font-size: clamp(62px, 13.2vw, 184px);
@@ -1482,12 +1482,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .home-title strong {
   font-weight: 800;
 }
-.home-hero .hero-portrait {
-  width: min(42%, 510px);
-  height: 88%;
-  object-position: center bottom;
+.home-hero .hero-portrait--main {
+  width: min(41vw, 620px);
+  max-width: 54%;
+  height: auto;
+  top: 13%;
+  bottom: auto;
+  object-position: center top;
   filter: grayscale(1) contrast(1.05);
-  mask-image: linear-gradient(to bottom, #000 68%, rgba(0,0,0,.7) 84%, transparent 100%);
+  mask-image: none;
 }
 .home-hero .hero-copy {
   left: max(7vw, calc((100vw - 1300px) / 2));
@@ -1779,8 +1782,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .home-title {
     font-size: clamp(58px, 13vw, 120px);
   }
-  .home-hero .hero-portrait {
-    width: 50%;
+  .home-hero .hero-portrait--main {
+    width: min(48vw, 520px);
+    max-width: 62%;
+    height: auto;
+    top: 16%;
+    bottom: auto;
   }
   .home-page .project-card {
     grid-template-columns: minmax(0, 1.05fr) minmax(190px, .8fr);
@@ -1807,14 +1814,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     min-height: 600px;
   }
   .home-title {
-    top: 13%;
-    font-size: clamp(40px, 12.5vw, 78px);
+    top: 8%;
+    font-size: clamp(50px, 15vw, 120px);
+    font-weight: 900;
+    letter-spacing: -.045em;
     letter-spacing: -.085em;
   }
-  .home-hero .hero-portrait {
-    width: min(76%, 390px);
-    height: 62%;
-    bottom: 25%;
+  .hero-portrait-stack {
+    inset: 0;
+  }
+  .home-hero .hero-portrait--main {
+    width: min(78vw, 420px);
+    max-width: 88%;
+    height: auto;
+    top: 15%;
+    bottom: auto;
+    object-position: center top;
   }
   .home-hero .hero-copy {
     left: 6%;
