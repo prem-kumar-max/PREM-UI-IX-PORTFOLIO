@@ -504,12 +504,12 @@ function FigmaEmbed({ src, title }) {
         }}
       >{fullscreen ? "Exit full screen ×" : "↗ Watch full screen"}</button>
       <div className="figma-embed">
-      {status === "loading" && <div className="figma-embed-status" role="status">Loading interactive prototype…</div>}
+      {status === "loading" && <div className="figma-embed-status" role="status">Your interactive prototype is loading. Thanks for your patience.</div>}
       {status === "error" && <div className="figma-embed-status figma-embed-error" role="status">The prototype could not be loaded. Check the Figma sharing settings and try again.</div>}
       <iframe
         title={`${title} Figma prototype`}
         src={safeSrc}
-        loading="lazy"
+        loading="eager"
         allow="fullscreen; clipboard-read; clipboard-write"
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
         referrerPolicy="strict-origin-when-cross-origin"
