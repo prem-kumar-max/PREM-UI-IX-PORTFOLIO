@@ -5366,11 +5366,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     width: 100%;
     padding: 0 3vw;
     justify-content: center;
-    font-size: 21.5vw;
+    font-size: 20.5vw;
     line-height: .8;
-    scale: 1 2.25; /* 'scale' property use chesam: JS parallax transform ni override cheyyadu */
+    scale: 1 2.36; /* 'scale' property use chesam: JS parallax transform ni override cheyyadu */
     transform-origin: 50% 0;
-    letter-spacing: .01em;
+    letter-spacing: .03em;
     z-index: 1;
   }
   .home-title span { -webkit-text-stroke-width: 1.5px; margin-right: .06em; }
